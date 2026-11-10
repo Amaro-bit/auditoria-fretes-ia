@@ -1,0 +1,2920 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FreteAudit · Auditoria de fretes com IA: fatura × Power BI × regra comercial</title>
+<meta name="description" content="Cruza a fatura da transportadora com o relatório do Power BI pelo número da NF, recalcula o frete pela regra do contrato (tabela combinada, calculadora, seletor de serviço ou cotação spot) e redige a defesa técnica de cada glosa." />
+<meta name="color-scheme" content="dark" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚚</text></svg>" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+<!-- TailwindCSS (Play CDN): gera o CSS no navegador a partir das classes usadas no HTML.
+     Em produção, o ideal é compilar com a CLI do Tailwind para não depender do CDN. -->
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+  // Protegido: se o CDN falhar, a página continua funcionando (sem estilos)
+  if (window.tailwind) tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Arial', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
+        },
+        colors: {
+          base: '#08090B', surface: '#101114', line: '#1E2026', ink: '#EDEDEF', mute: '#8A8F98',
+          accent: '#5E6AD2', ok: '#4CB782', bad: '#EB5757', warn: '#E2A53B',
+        },
+      },
+    },
+  };
+</script>
+<!-- Chart.js (gráficos) e Lucide (ícones SVG) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.344.0/dist/umd/lucide.min.js"></script>
+
+<style type="text/tailwindcss">
+  @layer components {
+    .card { @apply rounded-xl border border-line bg-surface/80; }
+    .btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 disabled:cursor-not-allowed disabled:opacity-40; }
+    .btn-accent { @apply bg-accent text-white hover:bg-[#6E79DB]; }
+    .btn-light { @apply bg-ink text-[#08090B] hover:bg-white; }
+    .btn-ghost { @apply border border-line bg-white/[0.02] text-ink/90 hover:bg-white/[0.06]; }
+    .btn-icon { @apply inline-flex h-7 w-7 items-center justify-center rounded-md border border-line text-mute transition-colors hover:bg-white/[0.06] hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 disabled:cursor-not-allowed disabled:opacity-40; }
+    .input { @apply w-full rounded-lg border border-line bg-base px-3 py-2 text-sm text-ink placeholder:text-mute/70 focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/25; }
+    .chip { @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-line px-3 py-1 text-xs font-medium text-mute transition-colors hover:text-ink; }
+    .chip-on { @apply border-ink/80 bg-ink text-[#08090B] hover:text-[#08090B]; }
+    .badge { @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset; }
+    .pill { @apply inline-flex items-center gap-2 rounded-full border border-line px-2.5 py-1 text-xs text-mute; }
+    .th { @apply whitespace-nowrap px-3 py-3 text-left text-xs font-medium text-mute; }
+    .th-duplo { @apply inline-flex flex-col items-end leading-tight hover:text-ink; }
+    .th-fonte { @apply text-[11px] font-normal text-mute/70; }
+    /* Espaço fixo de 2 linhas: o texto muda durante a execução, a altura não */
+    .kpi-sub { @apply mt-1 line-clamp-2 min-h-8 text-xs leading-4 text-mute; }
+    .insight { @apply mt-1 line-clamp-2 min-h-10 text-sm leading-5 text-mute; }
+    .label { @apply text-xs font-medium text-mute; }
+    .step { @apply grid h-5 w-5 shrink-0 place-items-center rounded-md bg-white/[0.07] text-[11px] font-semibold text-ink; }
+    .tab { @apply -mb-px rounded-t-sm border-b-2 border-transparent pb-2.5 text-[13px] font-medium text-mute transition-colors hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60; }
+    .tab-on { @apply border-ink text-ink hover:text-ink; }
+  }
+</style>
+
+<style>
+  html { background: #08090B; }
+  body { -webkit-font-smoothing: antialiased; }
+  .tabular { font-variant-numeric: tabular-nums; }
+  .top-glow { background: radial-gradient(900px 340px at 30% -12%, rgba(94,106,210,.16), transparent 70%); }
+  .scroll-thin { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.12) transparent; }
+  .scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scroll-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 8px; }
+  svg.lucide { stroke-width: 1.75; }
+  /* Linha de filtros: rola na horizontal sem barra visível, então nunca quebra em duas linhas */
+  .scroll-none { scrollbar-width: none; }
+  .scroll-none::-webkit-scrollbar { display: none; }
+  summary::-webkit-details-marker { display: none; }
+
+  /* Console do agente: cada tipo de linha tem uma cor */
+  .log-line { display: flex; gap: .7rem; padding: 1px 0; white-space: pre-wrap; word-break: break-word; animation: logIn .16s ease-out both; }
+  .log-time { color: #4B4F58; flex-shrink: 0; }
+  .log-tag { flex-shrink: 0; width: 6.9rem; font-weight: 600; color: #6B7079; }
+  .log-text { color: #C9CCD3; min-width: 0; }
+  .t-cmd .log-tag, .t-cmd .log-text { color: #F4F4F5; }
+  .t-ferramenta .log-tag { color: #4FC3D9; }
+  .t-regra .log-tag { color: #9AA2F0; }
+  .t-nota { margin-top: .65rem; }
+  .t-nota .log-tag, .t-nota .log-text { color: #F4F4F5; font-weight: 600; }
+  .t-pensamento .log-tag { color: #A9AFF5; }
+  .t-pensamento .log-text { color: #9095A0; font-style: italic; }
+  .t-acao .log-tag { color: #5AB0F0; }
+  .t-acao .log-text { color: #8CCBF7; }
+  .t-ok .log-tag, .t-ok .log-text, .t-sucesso .log-tag, .t-sucesso .log-text { color: #4CB782; }
+  .t-critica .log-tag, .t-critica .log-text { color: #F07A7A; }
+  .t-analise .log-tag, .t-analise .log-text, .t-aviso .log-tag, .t-aviso .log-text { color: #E2A53B; }
+  .t-resumo .log-tag { color: #D58BE0; }
+  .t-erro .log-tag, .t-erro .log-text { color: #F07A7A; }
+  .caret::after { content: '▋'; margin-left: 2px; color: #7C86E0; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  @keyframes logIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+
+  @keyframes rowFlash { from { background: rgba(94,106,210,.20); } to { background: transparent; } }
+  .row-flash { animation: rowFlash 1.2s ease-out; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes toastOut { to { opacity: 0; transform: translateY(8px); } }
+  .toast-in { animation: toastIn .2s ease-out both; }
+  .toast-out { animation: toastOut .2s ease-in both; }
+  /* Destaca apenas o próximo passo do fluxo */
+  @keyframes nudge { 0% { box-shadow: 0 0 0 0 rgba(94,106,210,.55); } 70% { box-shadow: 0 0 0 9px rgba(94,106,210,0); } 100% { box-shadow: 0 0 0 0 rgba(94,106,210,0); } }
+  .nudge { animation: nudge 2.2s ease-out infinite; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+
+<body class="min-h-screen font-sans text-ink antialiased selection:bg-accent/30">
+  <div aria-hidden="true" class="top-glow pointer-events-none absolute inset-x-0 top-0 h-[420px]"></div>
+
+  <!-- ============================== CABEÇALHO ============================== -->
+  <header class="sticky top-0 z-40 border-b border-line bg-base/80 backdrop-blur-xl">
+    <div class="mx-auto flex h-14 max-w-[1400px] items-center gap-3 px-4 sm:px-6">
+      <div class="flex items-center gap-2.5">
+        <span class="grid h-7 w-7 place-items-center rounded-lg bg-accent text-white"><i data-lucide="truck" class="h-4 w-4"></i></span>
+        <span class="text-sm font-semibold tracking-tight">FreteAudit</span>
+      </div>
+      <span class="hidden text-line md:inline">/</span>
+      <span class="hidden text-sm text-mute md:inline">Auditoria de fretes</span>
+      <div class="ml-auto flex items-center gap-2">
+        <div class="hidden items-center gap-2 lg:flex" aria-label="Status das fontes e do agente">
+          <span class="pill" title="Fatura da transportadora (CT-es)"><span id="dot-fatura" class="h-1.5 w-1.5 rounded-full bg-zinc-600"></span>Fatura</span>
+          <span class="pill" title="Relatório do Power BI (base interna SAP)"><span id="dot-bi" class="h-1.5 w-1.5 rounded-full bg-zinc-600"></span>Power BI</span>
+          <span class="pill" title="Tabelas, calculadoras, seletor de serviço e cotações"><span id="dot-regras" class="h-1.5 w-1.5 rounded-full bg-ok"></span>Regras</span>
+          <span class="pill"><span id="dot-agente" class="h-1.5 w-1.5 rounded-full bg-zinc-600"></span><span id="pill-agente-txt">Agente parado</span></span>
+        </div>
+        <a id="link-repo" href="#" target="_blank" rel="noopener" class="btn btn-ghost px-2.5 py-1.5 text-xs">
+          <i data-lucide="github" class="h-4 w-4"></i><span class="hidden sm:inline">auditoria-fretes-ia</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="relative mx-auto max-w-[1400px] space-y-5 px-4 pb-16 pt-8 sm:px-6">
+
+    <!-- ============================== TÍTULO ============================== -->
+    <section class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+      <div class="max-w-2xl">
+        <h1 class="text-[28px] font-semibold leading-tight tracking-[-0.02em] sm:text-[34px]">Cada CT-e da fatura conferido contra o Power BI e a regra do contrato.</h1>
+        <p class="mt-3 max-w-xl text-[15px] leading-relaxed text-mute">O agente cruza a fatura da transportadora com o relatório do Power BI pelo número da NF, recalcula o frete pela tabela, calculadora ou cotação de cada contrato e redige a defesa técnica de cada glosa para o Financeiro.</p>
+      </div>
+      <dl class="grid grid-cols-2 gap-x-8 gap-y-1 text-sm">
+        <dt class="label">Base</dt><dt class="label">Última execução</dt>
+        <dd id="hero-base" class="text-ink/90">Nenhuma carregada</dd><dd id="hero-exec" class="text-ink/90">Ainda não executado</dd>
+      </dl>
+    </section>
+
+    <!-- ============================== KPIs ============================== -->
+    <section aria-label="Indicadores executivos" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <article class="card p-5">
+        <div class="flex items-center justify-between"><span class="label">Notas auditadas</span><i data-lucide="file-check-2" class="h-4 w-4 text-mute"></i></div>
+        <div id="kpi-notas" class="tabular mt-3 text-[30px] font-semibold tracking-tight">—</div>
+        <div id="kpi-notas-sub" class="kpi-sub">Carregue a fatura e o Power BI</div>
+      </article>
+      <article class="card p-5">
+        <div class="flex items-center justify-between"><span class="label">Divergências: fatura × Power BI</span><i data-lucide="scale" class="h-4 w-4 text-mute"></i></div>
+        <div id="kpi-div" class="tabular mt-3 text-[30px] font-semibold tracking-tight text-bad">—</div>
+        <div id="kpi-div-sub" class="kpi-sub">Valor cobrado na fatura × previsto no Power BI</div>
+        <div class="mt-3 h-1 overflow-hidden rounded-full bg-white/[0.06]"><div id="kpi-div-bar" class="h-full w-0 rounded-full bg-bad transition-all duration-700"></div></div>
+      </article>
+      <article class="card p-5">
+        <div class="flex items-center justify-between"><span class="label">Economia gerada (glosas)</span><i data-lucide="piggy-bank" class="h-4 w-4 text-mute"></i></div>
+        <div id="kpi-eco" class="tabular mt-3 text-[30px] font-semibold tracking-tight text-ok">—</div>
+        <div id="kpi-eco-sub" class="kpi-sub">Cobrado acima da tabela, calculadora ou cotação</div>
+      </article>
+      <article class="card p-5">
+        <div class="flex items-center justify-between"><span class="label">Horas operacionais economizadas</span><i data-lucide="timer" class="h-4 w-4 text-mute"></i></div>
+        <div id="kpi-horas" class="tabular mt-3 text-[30px] font-semibold tracking-tight">—</div>
+        <div id="kpi-horas-sub" class="kpi-sub" title="Premissa ajustável em CONFIG.MINUTOS_MANUAIS">4 a 10 min por CT-e na conferência manual</div>
+      </article>
+    </section>
+
+    <!-- ============================== CARD 1 (DADOS) + CARD 2 (AGENTE) ============================== -->
+    <section class="grid grid-cols-1 gap-3 lg:grid-cols-12">
+      <!-- Card 1: define a altura da linha em telas grandes -->
+      <div id="card-dados" class="card flex flex-col p-5 lg:col-span-5">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h2 class="flex items-center gap-2 text-[15px] font-semibold"><span class="step">1</span>Carregar dados</h2>
+            <p class="mt-1 text-sm text-mute">Fatura da transportadora, relatório do Power BI e regras comerciais.</p>
+          </div>
+          <button id="btn-limpar" class="btn btn-ghost px-2.5 py-1.5 text-xs" disabled><i data-lucide="trash-2" class="h-3.5 w-3.5"></i>Limpar</button>
+        </div>
+
+        <button id="btn-carregar" class="btn btn-ghost nudge mt-4 w-full py-2.5">
+          <i data-lucide="database" class="h-4 w-4 text-accent"></i>Carregar Base Simulada (Fatura + Power BI)
+        </button>
+
+        <div id="fontes" class="mt-4 rounded-lg border border-line transition-colors" aria-label="Fontes do cruzamento">
+          <ul id="fontes-lista" class="divide-y divide-line"></ul>
+        </div>
+        <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <button id="btn-enviar" class="btn btn-ghost px-3 py-1.5 text-xs"><i data-lucide="upload" class="h-3.5 w-3.5"></i>Enviar planilhas (.csv)</button>
+          <input id="input-csv" type="file" accept=".csv,text/csv" multiple class="sr-only" tabindex="-1" aria-hidden="true" />
+          <span class="text-xs text-mute">Modelos:
+            <button data-modelo="fatura" class="font-medium text-[#9AA2F0] hover:text-ink">fatura</button>,
+            <button data-modelo="bi" class="font-medium text-[#9AA2F0] hover:text-ink">Power BI</button> e
+            <button data-modelo="cotacoes" class="font-medium text-[#9AA2F0] hover:text-ink">cotações</button>
+          </span>
+        </div>
+        <p class="mt-2 text-xs leading-relaxed text-mute">Arraste os arquivos para este card, juntos ou um de cada vez. Cada planilha é reconhecida pelas colunas e cruzada com as outras pelo número da NF.</p>
+
+        <div class="mt-5">
+          <h3 class="label mb-2">Etapas do pipeline</h3>
+          <ol id="pipeline" class="space-y-1"></ol>
+        </div>
+
+        <div class="mt-auto pt-5">
+          <button id="btn-executar" class="btn btn-accent w-full py-3 font-semibold" disabled>
+            <i data-lucide="sparkles" class="h-4 w-4"></i>Executar Agente de Auditoria IA
+          </button>
+          <p id="nota-executar" class="mt-2 text-center text-xs text-mute">Tolerância: R$ 1,00 ou 0,5% (o maior) · recálculo pela regra de cada contrato</p>
+        </div>
+      </div>
+
+      <!-- Card 2: o invólucro não tem conteúdo em fluxo, então não empurra a linha.
+           O cartão é absoluto (inset-0) e ocupa exatamente a altura do card 1 em telas grandes;
+           em telas pequenas, a altura é fixa. Só os painéis internos rolam. -->
+      <div class="relative h-[580px] lg:col-span-7 lg:h-auto">
+        <div id="card-agente" class="card absolute inset-0 flex flex-col overflow-hidden">
+          <div class="border-b border-line bg-base/60 px-4 pt-3">
+            <div class="flex flex-wrap items-center gap-3">
+              <h2 class="flex items-center gap-2 text-sm font-medium"><span class="step">2</span>Raciocínio do agente</h2>
+              <span id="agent-status" class="badge bg-white/[0.04] text-mute ring-line">Parado</span>
+              <div class="ml-auto flex items-center gap-1.5">
+                <label class="sr-only" for="sel-velocidade">Velocidade</label>
+                <select id="sel-velocidade" class="input w-auto py-1 text-xs">
+                  <option value="1">Velocidade 1×</option>
+                  <option value="2" selected>Velocidade 2×</option>
+                  <option value="5">Velocidade 5×</option>
+                  <option value="0">Instantâneo</option>
+                </select>
+                <button id="btn-parar" class="btn-icon" disabled title="Parar execução" aria-label="Parar execução"><i data-lucide="square" class="h-3.5 w-3.5"></i></button>
+              </div>
+            </div>
+            <div class="mt-3 flex items-end justify-between gap-3">
+              <div id="tablist-agente" role="tablist" aria-label="Visualização do agente" class="flex gap-5">
+                <button role="tab" id="tab-resumo" aria-selected="true" aria-controls="painel-resumo" class="tab tab-on">Resumo da Auditoria</button>
+                <button role="tab" id="tab-log" aria-selected="false" aria-controls="terminal" tabindex="-1" class="tab">Log Técnico (IA)</button>
+              </div>
+              <div id="acoes-log" class="hidden items-center gap-1.5 pb-2">
+                <button id="btn-copiar-log" class="btn-icon" title="Copiar log" aria-label="Copiar log"><i data-lucide="copy" class="h-3.5 w-3.5"></i></button>
+                <button id="btn-limpar-log" class="btn-icon" title="Limpar log" aria-label="Limpar log"><i data-lucide="eraser" class="h-3.5 w-3.5"></i></button>
+              </div>
+            </div>
+          </div>
+          <div id="painel-resumo" role="tabpanel" aria-labelledby="tab-resumo" tabindex="0" class="scroll-thin min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 focus:outline-none"></div>
+          <div id="terminal" role="tabpanel" aria-labelledby="tab-log" tabindex="0" class="scroll-thin hidden min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#07080A] px-4 py-3 font-mono text-[12px] leading-relaxed focus:outline-none"></div>
+          <div class="border-t border-line bg-base/60 px-4 py-2.5">
+            <div class="flex items-center justify-between text-xs text-mute">
+              <span id="agent-progress-label" class="tabular">0 de 0 CT-es</span>
+              <span id="agent-progress-meta" class="tabular">—</span>
+            </div>
+            <div class="mt-1.5 h-1 overflow-hidden rounded-full bg-white/[0.06]"><div id="agent-progress-bar" class="h-full w-0 rounded-full bg-accent transition-[width] duration-200"></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== MODALIDADES ============================== -->
+    <section aria-labelledby="titulo-modalidades" class="space-y-3">
+      <div class="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 id="titulo-modalidades" class="text-[15px] font-semibold">Regras comerciais por modalidade</h2>
+          <p class="mt-1 text-sm text-mute">Cada transportadora é auditada pela regra do próprio contrato. Clique em uma regra para filtrar a tabela.</p>
+        </div>
+        <button id="btn-todas-modalidades" class="hidden text-xs font-medium text-[#9AA2F0] hover:text-ink">Mostrar todas as regras</button>
+      </div>
+      <div id="modalidades-grid" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"></div>
+    </section>
+
+    <!-- ============================== GRÁFICOS ============================== -->
+    <section class="grid grid-cols-1 gap-3 lg:grid-cols-12">
+      <div class="card p-5 lg:col-span-7">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 class="text-[15px] font-semibold">Previsto no Power BI × devido pela regra × cobrado na fatura</h2>
+            <p id="chart-bar-insight" class="insight">Carregue uma base para comparar.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-4 text-xs text-mute">
+            <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-sm bg-[#3A3E48]"></span>Previsto (Power BI)</span>
+            <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-sm bg-[#9CA3AF]"></span>Devido pela regra</span>
+            <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-sm bg-accent"></span>Cobrado (fatura)</span>
+          </div>
+        </div>
+        <div class="relative mt-4 h-80">
+          <canvas id="chart-transportadoras" role="img" aria-label="Gráfico de barras com previsto, devido e cobrado por transportadora"></canvas>
+          <div id="chart-bar-empty" class="absolute inset-0 grid place-items-center rounded-lg border border-dashed border-line text-sm text-mute">Sem dados ainda</div>
+        </div>
+      </div>
+      <div class="card p-5 lg:col-span-5">
+        <h2 class="text-[15px] font-semibold">Distribuição dos erros encontrados</h2>
+        <p id="chart-erros-insight" class="insight">Achados do agente por tipo; a cor indica a regra que encontrou o erro.</p>
+        <div id="legenda-grupos" class="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-mute"></div>
+        <div class="relative mt-3 h-72">
+          <canvas id="chart-erros" role="img" aria-label="Gráfico de barras horizontais com a quantidade de cada tipo de erro"></canvas>
+          <div id="chart-erros-empty" class="absolute inset-0 grid place-items-center rounded-lg border border-dashed border-line text-sm text-mute">Execute o agente para ver os erros</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== TABELA ============================== -->
+    <section class="card overflow-hidden">
+      <div class="flex flex-col gap-4 border-b border-line p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="flex items-center gap-2 text-[15px] font-semibold"><span class="step">3</span>Resultado da auditoria</h2>
+            <p class="mt-1 text-sm text-mute">Clique em uma linha para ver o cruzamento das fontes, a memória de cálculo e a defesa técnica.</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button id="btn-exportar-defesas" class="btn btn-ghost" disabled><i data-lucide="file-text" class="h-4 w-4"></i>Exportar defesas (.txt)</button>
+            <button id="btn-exportar" class="btn btn-light" disabled><i data-lucide="file-down" class="h-4 w-4"></i>Exportar Planilha Padronizada (.CSV)</button>
+          </div>
+        </div>
+        <div class="flex flex-col gap-3 xl:flex-row xl:items-center">
+          <div class="relative xl:w-80 xl:shrink-0">
+            <i data-lucide="search" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-mute"></i>
+            <label for="input-busca" class="sr-only">Buscar</label>
+            <input id="input-busca" type="search" placeholder="Buscar NF, CT-e ou transportadora" class="input pl-9 pr-8" autocomplete="off" />
+            <kbd class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded border border-line px-1.5 text-[10px] text-mute">/</kbd>
+          </div>
+          <div id="status-chips" class="scroll-none flex min-w-0 gap-2 overflow-x-auto xl:flex-1" role="group" aria-label="Filtrar por status"></div>
+          <div class="flex flex-wrap gap-2 xl:ml-auto xl:shrink-0">
+            <label for="sel-modalidade" class="sr-only">Regra / modalidade</label>
+            <select id="sel-modalidade" class="input w-auto"></select>
+            <label for="sel-transp" class="sr-only">Transportadora</label>
+            <select id="sel-transp" class="input w-auto"></select>
+          </div>
+        </div>
+      </div>
+      <div class="scroll-thin overflow-x-auto">
+        <!-- table-fixed + colgroup: a largura de cada coluna não depende do conteúdo. Assim a tabela
+             não muda de tamanho quando o agente preenche diagnóstico, devido, glosa e status. -->
+        <table class="w-full min-w-[1300px] table-fixed text-sm">
+          <colgroup>
+            <col class="w-[160px]" /><col class="w-[160px]" /><col class="w-[156px]" />
+            <col class="w-[116px]" /><col class="w-[116px]" /><col class="w-[132px]" /><col class="w-[124px]" />
+            <col /><col class="w-[160px]" />
+          </colgroup>
+          <thead>
+            <tr id="thead-row" class="border-b border-line">
+              <th scope="col" class="th"><button data-sort="nf" class="inline-flex items-center gap-1 hover:text-ink">Nº NF<span data-ind="nf"></span></button></th>
+              <th scope="col" class="th"><button data-sort="transportadora" class="inline-flex items-center gap-1 hover:text-ink">Transportadora<span data-ind="transportadora"></span></button></th>
+              <th scope="col" class="th"><button data-sort="modalidade" class="inline-flex items-center gap-1 hover:text-ink">Regra / Modalidade<span data-ind="modalidade"></span></button></th>
+              <th scope="col" class="th text-right"><button data-sort="valorCte" class="th-duplo" title="Valor cobrado na fatura da transportadora"><span class="inline-flex items-center gap-1">Cobrado<span data-ind="valorCte"></span></span><span class="th-fonte">na fatura</span></button></th>
+              <th scope="col" class="th text-right"><button data-sort="valorPrevistoBi" class="th-duplo" title="Frete previsto no relatório do Power BI"><span class="inline-flex items-center gap-1">Previsto<span data-ind="valorPrevistoBi"></span></span><span class="th-fonte">no Power BI</span></button></th>
+              <th scope="col" class="th text-right"><button data-sort="devido" class="th-duplo" title="Valor recalculado pela regra do contrato e glosa recomendada"><span class="inline-flex items-center gap-1">Devido<span data-ind="devido"></span></span><span class="th-fonte">pela regra</span></button></th>
+              <th scope="col" class="th text-right"><button data-sort="diferenca" class="th-duplo" title="Cobrado na fatura menos o previsto no Power BI"><span class="inline-flex items-center gap-1">Diferença<span data-ind="diferenca"></span></span><span class="th-fonte">fatura × BI</span></button></th>
+              <th scope="col" class="th">Diagnóstico da IA</th>
+              <th scope="col" class="th"><button data-sort="status" class="inline-flex items-center gap-1 hover:text-ink">Status<span data-ind="status"></span></button></th>
+            </tr>
+          </thead>
+          <tbody id="tabela-body"></tbody>
+        </table>
+      </div>
+      <div id="tabela-vazia" class="flex flex-col items-center gap-3 px-6 py-14 text-center">
+        <i data-lucide="inbox" class="h-7 w-7 text-mute"></i>
+        <p id="tabela-vazia-txt" class="max-w-sm text-sm text-mute">Nenhum CT-e carregado. Use a base simulada ou envie a fatura e o relatório do Power BI.</p>
+      </div>
+      <div class="flex flex-col items-center justify-between gap-3 border-t border-line px-5 py-3 text-xs text-mute sm:flex-row">
+        <span id="tabela-info" class="tabular">0 CT-es</span>
+        <div class="flex items-center gap-2">
+          <label for="sel-page-size">Linhas por página</label>
+          <select id="sel-page-size" class="input w-auto py-1 text-xs"><option>15</option><option selected>25</option><option>50</option><option>100</option></select>
+          <button id="btn-prev" class="btn-icon" aria-label="Página anterior"><i data-lucide="chevron-left" class="h-4 w-4"></i></button>
+          <span id="pagina-info" class="tabular min-w-[3.5rem] text-center">1 de 1</span>
+          <button id="btn-next" class="btn-icon" aria-label="Próxima página"><i data-lucide="chevron-right" class="h-4 w-4"></i></button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t border-line">
+    <div class="mx-auto flex max-w-[1400px] flex-col gap-1 px-4 py-6 text-xs text-mute sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <p>Projeto de portfólio auditoria-fretes-ia · github.com/Amaro-bit. Contratos, notas e transportadoras são fictícios.</p>
+      <p>HTML, Tailwind, Chart.js e Lucide no front · Python, Pandas e LLM (Claude ou Gemini) no back</p>
+    </div>
+  </footer>
+
+  <!-- ============================== PAINEL DE DETALHE ============================== -->
+  <div id="drawer" class="fixed inset-0 z-50 hidden" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+    <div id="drawer-backdrop" class="absolute inset-0 bg-black/60 opacity-0 transition-opacity duration-200"></div>
+    <aside id="drawer-panel" class="absolute right-0 top-0 flex h-full w-full max-w-2xl translate-x-full flex-col border-l border-line bg-base shadow-2xl transition-transform duration-300">
+      <div class="flex items-start justify-between gap-3 border-b border-line p-5">
+        <div class="min-w-0">
+          <p class="label">Parecer de auditoria</p>
+          <h3 id="drawer-title" class="mt-1 text-lg font-semibold">NF</h3>
+          <p id="drawer-sub" class="mt-0.5 truncate text-sm text-mute"></p>
+        </div>
+        <button id="btn-fechar-drawer" class="btn-icon" aria-label="Fechar painel"><i data-lucide="x" class="h-4 w-4"></i></button>
+      </div>
+      <div id="drawer-body" class="scroll-thin flex-1 space-y-6 overflow-y-auto p-5 text-sm"></div>
+    </aside>
+  </div>
+
+  <div id="toasts" class="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-[min(92vw,380px)] flex-col gap-2" aria-live="polite"></div>
+  <script id="app">
+'use strict';
+/* ==========================================================================
+   FreteAudit — front-end do projeto auditoria-fretes-ia
+   Cada CT-e é conferido contra três fontes:
+     1. Fatura da transportadora: valor cobrado, peso taxado, taxas e serviço faturado
+     2. Relatório Power BI (base interna/SAP): NF, rota, peso real, cubagem,
+        valor da mercadoria e frete previsto
+     3. Regras comerciais: tabela combinada, calculadora, seletor de serviço
+        e cotações spot (WhatsApp)
+   Fluxo: leitura → cruzamento pela NF → classificação por regra → recálculo
+          → agente (CoT) → parecer + defesa técnica → relatório
+   Módulos: CONFIG · CONTRATOS · catálogos · utilitários · Fiscal · Regras · Contratos
+            DataGenerator · CsvService · Cruzamento · Motor · AuditEngine
+            Defesa · Parecer · Narrator · interface · Agent · init()
+   As regras e os números daqui são os mesmos do auditor_ia.py.
+   ========================================================================== */
+
+/* ---------- 1. Configuração de negócio ---------- */
+const CONFIG = Object.freeze({
+  REPO_URL: 'https://github.com/Amaro-bit/auditoria-fretes-ia',
+  TOLERANCIA_ABS: 1.0,            // R$: diferença mínima que conta como divergência
+  TOLERANCIA_PCT: 0.005,          // 0,5% do valor de referência (vale o maior dos dois)
+  TOLERANCIA_COMPONENTE: 0.5,     // R$: folga por componente (frete-peso, ad valorem, GRIS)
+  TOLERANCIA_PESO: 0.05,          // 5% de folga sobre o peso taxável
+  ALCADA_REVISAO_HUMANA: 1000,    // glosas a partir deste valor exigem revisão humana
+  // Premissa do KPI de horas: minutos por CT-e na conferência manual (PROCV fatura × BI + recálculo)
+  MINUTOS_MANUAIS: { TABELA_ICMS: 5, CALCULADORA: 9, SELETOR_SERVICO: 7, COTACAO_SPOT: 10, REFERENCIA_BI: 4 },
+  QTD_NOTAS_SIMULACAO: 72,        // CT-es simulados na fatura, sem contar as duplicidades
+  SEED: 20262060,                 // semente fixa: todos os tipos de erro aparecem, entre 2 e 4 vezes cada
+  MAX_ARQUIVO_MB: 10,
+  ATRASO_LINHA_MS: 26,
+  ATRASO_NOTA_MS: 90,
+});
+
+/* ---------- 2. Contratos por transportadora (fictícios, por sigilo corporativo) ---------- */
+// Fonte 3 do cruzamento: o contrato define QUAL regra de cálculo vale para cada transportadora.
+const CONTRATOS = Object.freeze({
+  'Transportadora Alfa': {
+    modalidade: 'TABELA_ICMS', modal: 'RODOVIARIO', fatorCubagem: 300,
+    faixasKg: [100, 300, 500, 1000, 2000, 5000],            // limite superior de cada faixa de peso
+    tabela: {                                                 // frete combinado por rota e faixa, SEM ICMS (R$)
+      'SP-GO': [168.00, 289.00, 418.00, 702.00, 1185.00, 2240.00],
+      'GO-SP': [161.00, 277.00, 401.00, 674.00, 1138.00, 2150.00],
+      'GO-DF': [92.00, 159.00, 230.00, 386.00, 652.00, 1232.00],
+      'MG-BA': [188.00, 324.00, 468.00, 786.00, 1327.00, 2509.00],
+      'SP-RJ': [124.00, 214.00, 309.00, 519.00, 877.00, 1658.00],
+      'GO-MG': [136.00, 234.00, 339.00, 569.00, 960.00, 1814.00],
+    },
+  },
+  'Beta Cargas':    { modalidade: 'CALCULADORA', modal: 'RODOVIARIO', fatorCubagem: 300, tarifaKg: 0.62, fretePesoMinimo: 120.00, adValoremPct: 0.30, grisPct: 0.15, grisMinimo: 8.50 },
+  'Gama Logística': { modalidade: 'CALCULADORA', modal: 'RODOVIARIO', fatorCubagem: 300, tarifaKg: 0.55, fretePesoMinimo: 140.00, adValoremPct: 0.25, grisPct: 0.20, grisMinimo: 10.00 },
+  'Delta Express': {
+    modalidade: 'SELETOR_SERVICO', modal: 'AEREO', fatorCubagem: 167,       // aéreo: 6.000 cm³/kg (padrão IATA)
+    servicos: {
+      ECOMMERCE: { tarifaKg: 3.10, minimo: 45.00, prazo: 'D+5' },
+      STANDARD:  { tarifaKg: 3.90, minimo: 60.00, prazo: 'D+3' },
+      EXPRESSO:  { tarifaKg: 5.60, minimo: 85.00, prazo: 'D+1' },
+      PREMIUM:   { tarifaKg: 7.80, minimo: 120.00, prazo: 'próximo voo' },
+    },
+  },
+  'Épsilon Rodoviário': { modalidade: 'COTACAO_SPOT', modal: 'RODOVIARIO', fatorCubagem: 300 },
+});
+
+/* ---------- 3. Catálogos ---------- */
+const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+// Res. SF 22/1989: origem S/SE (exceto ES) → destino N/NE/CO ou ES = 7%; demais interestaduais = 12%
+const UF_ORIGEM_7 = ['SP','RJ','MG','PR','SC','RS'];
+const UF_DESTINO_7 = ['AC','AM','AP','PA','RO','RR','TO','AL','BA','CE','MA','PB','PE','PI','RN','SE','DF','GO','MS','MT','ES'];
+
+const STATUS = Object.freeze({ APROVADO: 'Aprovado', CRITICA: 'Divergência Crítica', ANALISE: 'Em Análise', AGUARDANDO: 'Aguardando' });
+const ORDEM_SERVICOS = ['ECOMMERCE', 'STANDARD', 'EXPRESSO', 'PREMIUM'];   // do mais barato ao mais caro
+const NOME_SERVICO = Object.freeze({ ECOMMERCE: 'E-commerce', STANDARD: 'Standard', EXPRESSO: 'Expresso', PREMIUM: 'Premium' });
+
+// As três fontes do cruzamento
+const FONTES = Object.freeze({
+  fatura: { nome: 'Fatura da transportadora', curto: 'Fatura', icone: 'receipt', carregada: 'carregada', descricao: 'CT-es com valor cobrado, peso taxado, taxas e serviço faturado' },
+  bi:     { nome: 'Relatório Power BI', curto: 'Power BI', icone: 'bar-chart-3', carregada: 'carregado', descricao: 'Base interna (SAP): NF, rota, peso real, cubagem, mercadoria e frete previsto' },
+  regras: { nome: 'Regras comerciais', curto: 'Regras', icone: 'book-open', carregada: 'cadastradas', descricao: 'Tabelas, calculadoras, seletor de serviço e cotações WhatsApp' },
+});
+
+const MODALIDADES = Object.freeze({
+  TABELA_ICMS:     { nome: 'Tabela combinada + ICMS', curto: 'Tabela + ICMS', cor: '#60A5FA', icone: 'table-2', resumo: 'Rota e faixa de peso direto na tabela contratual, com ICMS por dentro.' },
+  CALCULADORA:     { nome: 'Motor de calculadora em massa', curto: 'Calculadora', cor: '#A78BFA', icone: 'calculator', resumo: 'Peso taxado (maior entre real e cubado) × tarifa, mais ad valorem e GRIS sobre a NF.' },
+  SELETOR_SERVICO: { nome: 'Seletor de serviço', curto: 'Seletor de serviço', cor: '#F472B6', icone: 'plane', resumo: 'Standard, E-commerce, Expresso ou Premium: confere se a fatura usa a tarifa contratada.' },
+  COTACAO_SPOT:    { nome: 'Cotação spot (WhatsApp)', curto: 'Cotação spot', cor: '#22D3EE', icone: 'message-circle', resumo: 'Valor acordado no WhatsApp × previsto no Power BI × cobrado na fatura.' },
+  REFERENCIA_BI:   { nome: 'Sem regra cadastrada', curto: 'Referência BI', cor: '#8A8F98', icone: 'circle-dashed', resumo: 'Transportadora fora do cadastro: a fatura é comparada com o frete previsto no Power BI.' },
+});
+const ORDEM_MODALIDADES = Object.keys(MODALIDADES);
+const GRUPO_COMUM = Object.freeze({ curto: 'Cruzamento e fiscal', cor: '#8A8F98' });
+
+// Catálogo de achados = enum "categoria_principal" do JSON Schema do system prompt.
+// A ordem das chaves é a prioridade de desempate (críticos primeiro, depois atenção).
+const GLOSAR = 'GLOSAR_E_NOTIFICAR_TRANSPORTADORA';
+const ACHADOS = Object.freeze({
+  DUPLICIDADE:               { rotulo: 'Cobrança em duplicidade', curto: 'Duplicidade', sev: 'critica', grupo: 'COMUM', acao: GLOSAR, confianca: 0.99, icone: 'copy' },
+  ALIQUOTA_ICMS_DIVERGENTE:  { rotulo: 'Alíquota de ICMS divergente', curto: 'ICMS divergente', sev: 'critica', grupo: 'COMUM', acao: 'SOLICITAR_CORRECAO_CTE', confianca: 0.95, icone: 'landmark' },
+  COBRANCA_ACIMA_FAIXA:      { rotulo: 'Cobrança acima da faixa de peso', curto: 'Faixa acima', sev: 'critica', grupo: 'TABELA_ICMS', acao: GLOSAR, confianca: 0.93, icone: 'arrow-up-circle' },
+  PESO_CUBADO_DIVERGENTE:    { rotulo: 'Peso cubado divergente', curto: 'Peso cubado', sev: 'critica', grupo: 'CALCULADORA', acao: GLOSAR, confianca: 0.90, icone: 'package' },
+  AD_VALOREM_DIVERGENTE:     { rotulo: 'Ad valorem acima do contrato', curto: 'Ad valorem', sev: 'critica', grupo: 'CALCULADORA', acao: GLOSAR, confianca: 0.93, icone: 'percent' },
+  GRIS_DIVERGENTE:           { rotulo: 'GRIS acima do contrato', curto: 'GRIS', sev: 'critica', grupo: 'CALCULADORA', acao: GLOSAR, confianca: 0.93, icone: 'shield-alert' },
+  SERVICO_SUPERIOR_FATURADO: { rotulo: 'Serviço faturado acima do contratado', curto: 'Serviço superior', sev: 'critica', grupo: 'SELETOR_SERVICO', acao: GLOSAR, confianca: 0.88, icone: 'plane' },
+  COTACAO_DIVERGENTE:        { rotulo: 'Cobrança acima da cotação acordada', curto: 'Acima da cotação', sev: 'critica', grupo: 'COTACAO_SPOT', acao: GLOSAR, confianca: 0.92, icone: 'message-circle' },
+  TARIFA_ACIMA_TABELA:       { rotulo: 'Tarifa acima do contrato', curto: 'Tarifa acima', sev: 'critica', grupo: 'COMUM', acao: GLOSAR, confianca: 0.80, icone: 'trending-up' },
+  NF_NAO_LOCALIZADA_BI:      { rotulo: 'NF não localizada no Power BI', curto: 'NF fora do BI', sev: 'atencao', grupo: 'COMUM', acao: 'VALIDAR_NF_BASE_INTERNA', confianca: 0.95, icone: 'file-search' },
+  COTACAO_AUSENTE:           { rotulo: 'Cotação spot não localizada', curto: 'Cotação ausente', sev: 'atencao', grupo: 'COTACAO_SPOT', acao: 'SOLICITAR_EVIDENCIA_COTACAO', confianca: 0.90, icone: 'search-x' },
+  ROTA_FORA_TABELA:          { rotulo: 'Rota fora da tabela contratual', curto: 'Rota fora da tabela', sev: 'atencao', grupo: 'TABELA_ICMS', acao: 'VALIDAR_COM_SUPRIMENTOS', confianca: 0.92, icone: 'map-pin-off' },
+  BI_DIVERGENTE_REGRA:       { rotulo: 'Previsto no Power BI diverge da regra', curto: 'BI divergente', sev: 'atencao', grupo: 'COMUM', acao: 'CORRIGIR_PREVISAO_BI', confianca: 0.88, icone: 'bar-chart-3' },
+  VALOR_ABAIXO_ESPERADO:     { rotulo: 'Cobrança abaixo do devido', curto: 'Abaixo do devido', sev: 'atencao', grupo: 'COMUM', acao: 'MONITORAR_CTE_COMPLEMENTAR', confianca: 0.75, icone: 'trending-down' },
+});
+const ORDEM_ACHADOS = Object.keys(ACHADOS);
+
+const ACAO_LABEL = Object.freeze({
+  APROVAR_PAGAMENTO: 'Liberar pagamento integral',
+  GLOSAR_E_NOTIFICAR_TRANSPORTADORA: 'Glosar e notificar a transportadora',
+  SOLICITAR_CORRECAO_CTE: 'Solicitar CT-e de substituição',
+  VALIDAR_NF_BASE_INTERNA: 'Validar a NF na base interna',
+  VALIDAR_COM_SUPRIMENTOS: 'Validar rota com Suprimentos',
+  SOLICITAR_EVIDENCIA_COTACAO: 'Solicitar evidência da cotação',
+  CORRIGIR_PREVISAO_BI: 'Corrigir o previsto no SAP/BI e liberar',
+  MONITORAR_CTE_COMPLEMENTAR: 'Liberar e monitorar CT-e complementar',
+});
+// Versão curta, para a lista do resumo
+const ACAO_CURTO = Object.freeze({
+  APROVAR_PAGAMENTO: 'liberar', GLOSAR_E_NOTIFICAR_TRANSPORTADORA: 'a glosar', SOLICITAR_CORRECAO_CTE: 'substituir CT-e',
+  VALIDAR_NF_BASE_INTERNA: 'validar NF', VALIDAR_COM_SUPRIMENTOS: 'validar rota', SOLICITAR_EVIDENCIA_COTACAO: 'pedir cotação',
+  CORRIGIR_PREVISAO_BI: 'corrigir BI', MONITORAR_CTE_COMPLEMENTAR: 'monitorar',
+});
+
+/* ---------- 4. Utilitários ---------- */
+const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const Fmt = {
+  moeda: (v) => BRL.format(Number.isFinite(v) ? v : 0),
+  moedaSinal: (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + BRL.format(Math.abs(v || 0)),
+  moedaCompacta: (v) => {
+    const a = Math.abs(v);
+    if (a >= 1e6) return 'R$ ' + Fmt.num(v / 1e6, 1) + ' mi';
+    if (a >= 1e3) return 'R$ ' + Fmt.num(v / 1e3, 1) + ' mil';
+    return 'R$ ' + Fmt.num(v, 0);
+  },
+  num: (v, casas = 2) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas }),
+  pct: (v, casas = 1) => Fmt.num((Number.isFinite(v) ? v : 0) * 100, casas) + '%',
+  pctSinal: (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + Fmt.pct(Math.abs(v || 0)),
+  kg: (v) => Fmt.num(v, 1) + ' kg',
+  hora: (d = new Date()) => d.toLocaleTimeString('pt-BR', { hour12: false }),
+  dataBR: (iso) => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '—'),
+  duracao: (ms) => (ms < 60000 ? Fmt.num(ms / 1000, 1) + ' s' : Math.floor(ms / 60000) + ' min ' + Math.round((ms % 60000) / 1000) + ' s'),
+};
+
+const $ = (sel, raiz = document) => raiz.querySelector(sel);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
+const somar = (lista, campo) => round2(lista.reduce((s, x) => s + (Number(x[campo]) || 0), 0));
+const normTxt = (s) => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+// Segurança: todo texto vindo de planilha passa por aqui antes de entrar no HTML (evita XSS)
+const escapeHTML = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const icon = (nome, classes = 'h-4 w-4') => `<i data-lucide="${nome}" class="${classes}"></i>`;
+// "Peso cubado divergente" → "peso cubado divergente", mas "GRIS acima" continua "GRIS acima"
+const inicialMinuscula = (s) => (/^[A-ZÀ-Ú][a-zà-ú]/.test(s) ? s.charAt(0).toLowerCase() + s.slice(1) : s);
+const rotaTxt = (r) => (r.ufOrigem && r.ufDestino ? `${r.ufOrigem}→${r.ufDestino}` : 'rota não informada');
+// Plural simples: pl(1, 'CT-e', 'CT-es') → "1 CT-e"; pl(3, ...) → "3 CT-es"
+const pl = (n, singular, plural) => `${Fmt.num(n, 0)} ${n === 1 ? singular : plural}`;
+
+let iconesAgendados = false;
+function refreshIcons() {
+  if (iconesAgendados || typeof window === 'undefined' || !window.lucide) return;
+  iconesAgendados = true;
+  requestAnimationFrame(() => {
+    iconesAgendados = false;
+    try { window.lucide.createIcons(); } catch (e) { console.warn('Lucide:', e); }
+  });
+}
+
+// Gerador pseudoaleatório com semente (mulberry32): mesma semente → mesmos números
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* ---------- 5. Regras fiscais e cálculos puros (sem efeito colateral) ---------- */
+const Fiscal = {
+  // ICMS interestadual do frete. Rodoviário: Res. SF 22/1989 (7% ou 12%). Aéreo: Res. SF 95/1996 (4%).
+  // null = operação interna ou UF ausente (a regra não se aplica).
+  aliquotaInterestadual(ufOrigem, ufDestino, modal = 'RODOVIARIO') {
+    if (!UFS.includes(ufOrigem) || !UFS.includes(ufDestino) || ufOrigem === ufDestino) return null;
+    if (modal === 'AEREO') return 4;
+    return UF_ORIGEM_7.includes(ufOrigem) && UF_DESTINO_7.includes(ufDestino) ? 7 : 12;
+  },
+};
+
+const Regras = {
+  // Peso taxável = maior entre o peso real e o cubado (volume × fator de cubagem do contrato)
+  pesos(r, c) {
+    const cubado = round2((r.volumeM3 || 0) * c.fatorCubagem);
+    return { cubado, taxavel: round2(Math.max(r.pesoRealKg || 0, cubado)) };
+  },
+  comIcms: (base, aliq) => round2(base / (1 - aliq / 100)),     // ICMS "por dentro": o imposto integra a própria base
+  semIcms: (valor, aliq) => round2(valor * (1 - aliq / 100)),
+  rota: (r) => `${r.ufOrigem}-${r.ufDestino}`,
+  faixa: (c, peso) => c.faixasKg.findIndex((limite) => peso <= limite),  // -1 = acima da última faixa
+  rotuloFaixa(c, i) { const ini = i === 0 ? 0 : c.faixasKg[i - 1]; return `${Fmt.num(ini, 0)}–${Fmt.num(c.faixasKg[i], 0)} kg`; },
+  calculadora(c, pesoTaxavel, valorNF) {
+    const fretePeso = round2(Math.max(c.fretePesoMinimo, pesoTaxavel * c.tarifaKg));
+    const adValorem = round2((valorNF * c.adValoremPct) / 100);
+    const gris = round2(Math.max(c.grisMinimo, (valorNF * c.grisPct) / 100));
+    return { fretePeso, adValorem, gris, subtotal: round2(fretePeso + adValorem + gris) };
+  },
+  servico: (c, cod, pesoTaxavel) => round2(Math.max(c.servicos[cod].minimo, pesoTaxavel * c.servicos[cod].tarifaKg)),
+};
+
+const Contratos = {
+  // Índice por nome normalizado: "Épsilon Rodoviário" e "EPSILON RODOVIARIO" acham o mesmo contrato
+  indice: new Map(Object.entries(CONTRATOS).map(([nome, c]) => [normTxt(nome), { nome, ...c }])),
+  resolver(r) {
+    const c = this.indice.get(normTxt(r.transportadora));
+    if (c) return c;
+    // Cotação spot não depende de tabela: vale para qualquer transportadora com cotação registrada
+    if (r.modalidadeInformada === 'COTACAO_SPOT' || (Number.isFinite(r.cotacaoValor) && r.cotacaoValor > 0)) {
+      return { nome: r.transportadora, modalidade: 'COTACAO_SPOT', modal: 'RODOVIARIO', fatorCubagem: 300, generico: true };
+    }
+    return { nome: r.transportadora, modalidade: 'REFERENCIA_BI', modal: 'RODOVIARIO', fatorCubagem: 300, generico: true };
+  },
+  doTipo: (modalidade) => Object.keys(CONTRATOS).filter((nome) => CONTRATOS[nome].modalidade === modalidade),
+  qtdRegras: () => new Set(Object.values(CONTRATOS).map((c) => c.modalidade)).size,
+};
+
+/* ---------- 6. Gerador da base simulada: as três fontes, separadas como na rotina real ---------- */
+const DataGenerator = {
+  FREQUENCIA: [['Transportadora Alfa', 16], ['Beta Cargas', 15], ['Gama Logística', 13], ['Delta Express', 12], ['Épsilon Rodoviário', 16]],
+  RISCO: { 'Transportadora Alfa': 0.45, 'Beta Cargas': 0.55, 'Gama Logística': 0.4, 'Delta Express': 0.45, 'Épsilon Rodoviário': 0.6 },
+  SIGLAS: { 'Transportadora Alfa': 'ALF', 'Beta Cargas': 'BET', 'Gama Logística': 'GAM', 'Delta Express': 'DEL', 'Épsilon Rodoviário': 'EPS' },
+  ROTAS: {
+    calculadora: [['SP','GO'], ['GO','SP'], ['MG','BA'], ['PR','MT'], ['GO','DF'], ['SC','GO'], ['RS','SP'], ['GO','MG'], ['SP','PE']],
+    foraDaTabela: [['GO','PA'], ['SP','PE'], ['GO','TO'], ['MG','ES']],
+    aereas: [['SP','PE'], ['SP','BA'], ['GO','AM'], ['DF','PA'], ['SP','CE'], ['GO','RS']],
+    spot: [['GO','PA'], ['GO','TO'], ['SP','PE'], ['MG','ES'], ['GO','RO'], ['SP','CE']],
+  },
+  // Tipos de erro injetados em cada modalidade, com peso relativo
+  CENARIOS: {
+    TABELA_ICMS: [['faixa_acima', 36], ['rota_fora', 20], ['icms', 24], ['bi_desatualizado', 20]],
+    CALCULADORA: [['cubagem', 34], ['ad_valorem', 26], ['gris', 22], ['bi_desatualizado', 18]],
+    SELETOR_SERVICO: [['upgrade', 75], ['icms', 25]],
+    COTACAO_SPOT: [['acima_cotacao', 30], ['icms_por_fora', 24], ['bi_divergente', 26], ['sem_cotacao', 20]],
+  },
+
+  // Devolve { fatura, bi, cotacoes }: as mesmas três planilhas que chegam na rotina real
+  gerar(qtd = CONFIG.QTD_NOTAS_SIMULACAO, seed = CONFIG.SEED) {
+    const rnd = mulberry32(seed);
+    const h = {
+      rnd,
+      entre: (a, b) => a + rnd() * (b - a),
+      escolher: (lista) => lista[Math.floor(rnd() * lista.length)],
+      ponderado: (pares) => {
+        let x = rnd() * pares.reduce((s, [, p]) => s + p, 0);
+        for (const [valor, peso] of pares) { x -= peso; if (x < 0) return valor; }
+        return pares[pares.length - 1][0];
+      },
+    };
+    const hoje = Date.now();
+    const naoFaturadas = Math.max(1, Math.round(qtd * 0.08));   // notas do BI emitidas depois do fechamento da fatura
+    const notas = [];
+    let nf = 184200 + Math.floor(rnd() * 500);
+    let cte = 55800 + Math.floor(rnd() * 300);
+
+    for (let i = 0; i < qtd + naoFaturadas; i++) {
+      const nome = h.ponderado(this.FREQUENCIA);
+      const c = { nome, ...CONTRATOS[nome] };
+      const faturada = i < qtd;
+      nf += 1 + Math.floor(rnd() * 6);
+      cte += 1 + Math.floor(rnd() * 4);
+      const dias = faturada ? Math.floor(h.entre(5, 28)) : Math.floor(h.entre(0, 4));
+      const r = {
+        nf: String(nf), numeroCte: String(cte), fatura: '', transportadora: nome, ufOrigem: '', ufDestino: '',
+        pesoRealKg: 0, volumeM3: 0, valorMercadoria: round2(h.entre(2500, 85000)), valorPrevistoBi: 0, servicoContratado: '',
+        valorCte: 0, pesoTaxadoCteKg: 0, fretePesoCte: 0, adValoremCte: 0, grisCte: 0, aliquotaIcmsCte: null, servicoCte: '',
+        cotacaoId: '', cotacaoValor: null, cotacaoIcmsIncluso: null, cotacaoData: '',
+        dataEmissao: new Date(hoje - dias * 86400000).toISOString().slice(0, 10),
+      };
+      const cenario = faturada && rnd() < this.RISCO[nome] ? h.ponderado(this.CENARIOS[c.modalidade]) : 'ok';
+      r.cenarioSimulado = faturada ? cenario : 'sem_cobranca';   // só para os testes: o motor nunca lê este campo
+      this[c.modalidade](r, c, cenario, h);
+      r.fatura = this.numeroFatura(nome, r.dataEmissao);
+      notas.push(r);
+    }
+
+    const faturadas = notas.filter((r) => r.cenarioSimulado !== 'sem_cobranca');
+    const candidatos = faturadas.filter((r) => r.cenarioSimulado === 'ok');
+    const sortear = () => candidatos.splice(Math.floor(rnd() * candidatos.length), 1)[0];
+    const especiais = qtd >= 30 ? 2 : 1;
+    // Duplicidade: o mesmo CT-e cobrado de novo, alguns registros depois
+    for (let k = 0; k < especiais && candidatos.length; k++) {
+      const original = sortear();
+      const pos = Math.min(faturadas.length, faturadas.indexOf(original) + 3 + Math.floor(rnd() * 15));
+      faturadas.splice(pos, 0, { ...original, cenarioSimulado: 'duplicidade' });
+    }
+    // CT-e cobrando uma NF que não está no Power BI (outra filial, outro período ou erro de digitação)
+    for (let k = 0; k < especiais && candidatos.length; k++) sortear().cenarioSimulado = 'sem_bi';
+
+    const internas = notas.filter((r) => r.cenarioSimulado !== 'sem_bi');
+    return {
+      fatura: faturadas.map((r) => this.paraFatura(r)),
+      bi: internas.map((r) => this.paraBi(r)),
+      cotacoes: internas.filter((r) => r.cotacaoValor).map((r) => this.paraCotacao(r)),
+    };
+  },
+
+  // Fonte 1: o que a transportadora manda na fatura
+  paraFatura: (r) => ({
+    fatura: r.fatura, numeroCte: r.numeroCte, nf: r.nf, transportadora: r.transportadora, dataEmissao: r.dataEmissao,
+    valorCte: r.valorCte, pesoTaxadoCteKg: r.pesoTaxadoCteKg, fretePesoCte: r.fretePesoCte, adValoremCte: r.adValoremCte,
+    grisCte: r.grisCte, aliquotaIcmsCte: r.aliquotaIcmsCte, servicoCte: r.servicoCte, cenarioSimulado: r.cenarioSimulado,
+  }),
+  // Fonte 2: o que a base interna (SAP) mostra no Power BI
+  paraBi: (r) => ({
+    nf: r.nf, transportadora: r.transportadora, ufOrigem: r.ufOrigem, ufDestino: r.ufDestino, pesoRealKg: r.pesoRealKg,
+    volumeM3: r.volumeM3, valorMercadoria: r.valorMercadoria, valorPrevistoBi: r.valorPrevistoBi, servicoContratado: r.servicoContratado,
+  }),
+  // Fonte 3 (parte variável): o registro da negociação spot no WhatsApp
+  paraCotacao: (r) => ({
+    cotacaoId: r.cotacaoId, nf: r.nf, transportadora: r.transportadora, cotacaoValor: r.cotacaoValor,
+    cotacaoIcmsIncluso: r.cotacaoIcmsIncluso, cotacaoData: r.cotacaoData,
+  }),
+
+  // Faturas quinzenais por transportadora: FT-BET-1026-2 = Beta, outubro/2026, 2ª quinzena
+  numeroFatura(nome, dataISO) {
+    const [ano, mes, dia] = dataISO.split('-');
+    return `FT-${this.SIGLAS[nome] || 'TRP'}-${mes}${ano.slice(2)}-${Number(dia) <= 15 ? 1 : 2}`;
+  },
+
+  // Peso e volume: 40% das cargas são leves e volumosas (o peso cubado passa o real)
+  carga(r, h, pesoMin, pesoMax, densMin, densMax) {
+    r.pesoRealKg = round2(h.entre(pesoMin, pesoMax));
+    const densidade = h.rnd() < 0.4 ? h.entre(densMin, densMin * 2.5) : h.entre(densMin * 2.9, densMax);
+    r.volumeM3 = Math.round((r.pesoRealKg / densidade) * 1000) / 1000;
+  },
+
+  TABELA_ICMS(r, c, cenario, h) {
+    const [o, d] = cenario === 'rota_fora' ? h.escolher(this.ROTAS.foraDaTabela) : h.escolher(Object.keys(c.tabela)).split('-');
+    r.ufOrigem = o; r.ufDestino = d;
+    this.carga(r, h, 40, 1400, 110, 900);
+    const aliq = Fiscal.aliquotaInterestadual(o, d, c.modal);
+    r.aliquotaIcmsCte = aliq;
+    const { taxavel } = Regras.pesos(r, c);
+    r.pesoTaxadoCteKg = taxavel;
+    const tabela = c.tabela[`${o}-${d}`];
+    const idx = Regras.faixa(c, taxavel);
+    if (!tabela || idx < 0) {
+      // Sem tabela: a transportadora cobra um valor "negociado" e o BI traz uma estimativa
+      r.valorCte = Regras.comIcms(round2(110 + taxavel * h.entre(0.7, 1.1)), aliq);
+      r.valorPrevistoBi = round2(r.valorCte * h.entre(0.9, 1.0));
+      return;
+    }
+    const devido = Regras.comIcms(tabela[idx], aliq);
+    r.valorPrevistoBi = round2(devido + h.entre(-0.3, 0.3));   // previsão do SAP com arredondamento
+    r.valorCte = devido;
+    if (cenario === 'faixa_acima') {
+      if (idx === c.faixasKg.length - 1) { r.cenarioSimulado = 'ok'; return; }   // já está na última faixa
+      const acima = idx + 1;
+      const ini = c.faixasKg[idx];
+      r.pesoTaxadoCteKg = round2(ini + (c.faixasKg[acima] - ini) * h.entre(0.05, 0.5));
+      r.valorCte = Regras.comIcms(tabela[acima], aliq);
+    } else if (cenario === 'icms') {
+      r.aliquotaIcmsCte = aliq === 7 ? 12 : 18;
+      r.valorCte = Regras.comIcms(tabela[idx], r.aliquotaIcmsCte);
+    } else if (cenario === 'bi_desatualizado') {
+      r.valorPrevistoBi = round2(devido * h.entre(0.9, 0.95));   // reajuste do contrato não carregado no SAP
+    }
+  },
+
+  CALCULADORA(r, c, cenario, h) {
+    [r.ufOrigem, r.ufDestino] = h.escolher(this.ROTAS.calculadora);
+    this.carga(r, h, 40, 2400, 110, 900);
+    const aliq = Fiscal.aliquotaInterestadual(r.ufOrigem, r.ufDestino, c.modal);
+    r.aliquotaIcmsCte = aliq;
+    const { taxavel } = Regras.pesos(r, c);
+    const v = Regras.calculadora(c, taxavel, r.valorMercadoria);
+    r.pesoTaxadoCteKg = taxavel;
+    r.fretePesoCte = v.fretePeso; r.adValoremCte = v.adValorem; r.grisCte = v.gris;
+    const devido = Regras.comIcms(v.subtotal, aliq);
+    r.valorPrevistoBi = round2(devido + h.entre(-0.3, 0.3));
+    if (cenario === 'cubagem') {
+      r.pesoTaxadoCteKg = round2(taxavel * h.entre(1.15, 1.45));
+      r.fretePesoCte = round2(Math.max(c.fretePesoMinimo, r.pesoTaxadoCteKg * c.tarifaKg));
+    } else if (cenario === 'ad_valorem') {
+      r.adValoremCte = round2((r.valorMercadoria * (c.adValoremPct + h.escolher([0.15, 0.2, 0.25]))) / 100);
+    } else if (cenario === 'gris') {
+      r.grisCte = round2(Math.max(c.grisMinimo, (r.valorMercadoria * c.grisPct * 2) / 100));
+    } else if (cenario === 'bi_desatualizado') {
+      r.valorPrevistoBi = round2(devido * h.entre(0.9, 0.95));
+    }
+    // Erro absorvido pelo mínimo contratual não tem efeito financeiro: deixa de contar como cenário com erro
+    const semEfeito = (cenario === 'cubagem' && r.fretePesoCte - v.fretePeso <= CONFIG.TOLERANCIA_COMPONENTE)
+      || (cenario === 'gris' && r.grisCte - v.gris <= CONFIG.TOLERANCIA_COMPONENTE);
+    if (semEfeito) r.cenarioSimulado = 'ok';
+    r.valorCte = Regras.comIcms(r.fretePesoCte + r.adValoremCte + r.grisCte, aliq);
+  },
+
+  SELETOR_SERVICO(r, c, cenario, h) {
+    [r.ufOrigem, r.ufDestino] = h.escolher(this.ROTAS.aereas);
+    this.carga(r, h, 3, 150, 60, 600);
+    const aliq = Fiscal.aliquotaInterestadual(r.ufOrigem, r.ufDestino, c.modal);   // 4% no aéreo
+    const { taxavel } = Regras.pesos(r, c);
+    r.pesoTaxadoCteKg = taxavel;
+    const upgrade = cenario === 'upgrade';
+    const contratado = upgrade ? h.escolher(['STANDARD', 'ECOMMERCE']) : h.ponderado([['STANDARD', 40], ['ECOMMERCE', 30], ['EXPRESSO', 20], ['PREMIUM', 10]]);
+    const faturado = upgrade ? h.escolher(['EXPRESSO', 'PREMIUM']) : contratado;
+    r.servicoContratado = contratado;
+    // Muitas vezes a fatura não declara o serviço, ou declara o contratado e cobra outro
+    r.servicoCte = upgrade ? h.ponderado([['', 50], [faturado, 30], [contratado, 20]]) : h.ponderado([['', 50], [contratado, 50]]);
+    r.valorPrevistoBi = round2(Regras.comIcms(Regras.servico(c, contratado, taxavel), aliq) + h.entre(-0.3, 0.3));
+    r.aliquotaIcmsCte = cenario === 'icms' ? 12 : aliq;   // erro comum: alíquota rodoviária num CT-e aéreo
+    r.valorCte = Regras.comIcms(Regras.servico(c, faturado, taxavel), r.aliquotaIcmsCte);
+  },
+
+  COTACAO_SPOT(r, c, cenario, h) {
+    [r.ufOrigem, r.ufDestino] = h.escolher(this.ROTAS.spot);
+    this.carga(r, h, 900, 12000, 150, 600);
+    const aliq = Fiscal.aliquotaInterestadual(r.ufOrigem, r.ufDestino, c.modal);
+    r.aliquotaIcmsCte = aliq;
+    const { taxavel } = Regras.pesos(r, c);
+    r.pesoTaxadoCteKg = taxavel;
+    const acordado = Math.round((450 + taxavel * h.entre(0.38, 0.62)) / 50) * 50;
+    const incluso = cenario === 'icms_por_fora' ? true : h.rnd() < 0.65;
+    const p2 = (n) => String(n).padStart(2, '0');
+    const dia = new Date(Date.parse(r.dataEmissao + 'T12:00:00Z') - Math.floor(h.entre(1, 4)) * 86400000);
+    const dd = p2(dia.getUTCDate()), mm = p2(dia.getUTCMonth() + 1);
+    r.cotacaoId = `WA-${dd}${mm}-${p2(1 + Math.floor(h.entre(0, 98)))}`;
+    r.cotacaoData = `${dd}/${mm}/${dia.getUTCFullYear()} ${p2(8 + Math.floor(h.entre(0, 10)))}:${p2(Math.floor(h.entre(0, 60)))}`;
+    r.cotacaoValor = acordado;
+    r.cotacaoIcmsIncluso = incluso;
+    const devido = incluso ? acordado : Regras.comIcms(acordado, aliq);
+    r.valorPrevistoBi = devido;
+    r.valorCte = devido;
+    if (cenario === 'acima_cotacao') r.valorCte = round2(devido * h.entre(1.06, 1.18));
+    else if (cenario === 'icms_por_fora') r.valorCte = Regras.comIcms(acordado, aliq);    // ICMS somado sobre valor que já o incluía
+    else if (cenario === 'bi_divergente') r.valorPrevistoBi = incluso ? round2(devido * h.entre(0.86, 0.94)) : acordado; // por fora: BI lançado sem o ICMS
+    else if (cenario === 'sem_cotacao') {
+      r.cotacaoId = ''; r.cotacaoValor = null; r.cotacaoIcmsIncluso = null; r.cotacaoData = '';
+      r.valorPrevistoBi = r.valorCte;   // previsto lançado igual à fatura, sem evidência da negociação
+    }
+  },
+};
+
+/* ---------- 7. Leitura e escrita de CSV ---------- */
+const CsvService = {
+  // Cada campo aceita vários nomes de coluna (já normalizados). Inclui os nomes da planilha
+  // padronizada exportada por este sistema, para que ela possa ser reimportada.
+  CAMPOS: [
+    { chave: 'nf', aliases: ['nf', 'numero_nf', 'n_nf', 'no_nf', 'num_nf', 'nota_fiscal', 'nfe', 'nf_e'] },
+    { chave: 'numeroCte', aliases: ['numero_cte', 'cte', 'ct_e', 'n_cte', 'num_cte', 'numero_ct_e'] },
+    { chave: 'fatura', aliases: ['fatura', 'numero_fatura', 'n_fatura', 'num_fatura', 'id_fatura'] },
+    { chave: 'transportadora', aliases: ['transportadora', 'transp', 'carrier', 'razao_social_transportadora'] },
+    { chave: 'modalidadeInformada', aliases: ['modalidade', 'regra_modalidade', 'regra'] },
+    { chave: 'ufOrigem', aliases: ['uf_origem', 'origem'] },
+    { chave: 'ufDestino', aliases: ['uf_destino', 'destino'] },
+    { chave: 'dataEmissao', aliases: ['data_emissao', 'data_emissao_ct_e', 'data_emissao_cte', 'emissao', 'data'] },
+    // Fonte 1: fatura da transportadora
+    { chave: 'valorCte', aliases: ['valor_cobrado', 'valor_cobrado_fatura', 'valor_fatura', 'valor_cte', 'valor_cobrado_ct_e', 'valor_ct_e', 'frete_cte', 'vl_cte', 'valor_prestacao'] },
+    { chave: 'pesoTaxadoCteKg', aliases: ['peso_taxado_kg', 'peso_taxado', 'peso_taxado_fatura_kg', 'peso_taxado_cte_kg', 'peso_taxado_ct_e_kg', 'peso_cobrado', 'peso_cte'] },
+    { chave: 'fretePesoCte', aliases: ['frete_peso', 'frete_peso_fatura', 'frete_peso_cte', 'frete_peso_ct_e'] },
+    { chave: 'adValoremCte', aliases: ['ad_valorem', 'ad_valorem_fatura', 'ad_valorem_cte', 'ad_valorem_ct_e', 'frete_valor'] },
+    { chave: 'grisCte', aliases: ['gris', 'gris_fatura', 'gris_cte', 'gris_ct_e'] },
+    { chave: 'aliquotaIcmsCte', aliases: ['aliquota_icms', 'aliquota_icms_fatura', 'aliquota_icms_cte', 'aliquota_icms_ct_e', 'aliq_icms', 'icms'] },
+    { chave: 'servicoCte', aliases: ['servico_faturado', 'servico_fatura', 'servico_cte', 'servico_ct_e', 'servico'] },
+    // Fonte 2: relatório Power BI (base interna)
+    { chave: 'pesoRealKg', aliases: ['peso_real_kg', 'peso_real', 'peso_real_bi_kg', 'peso_kg', 'peso_bruto'] },
+    { chave: 'volumeM3', aliases: ['volume_m3', 'volume', 'volume_bi_m3', 'cubagem_m3', 'm3'] },
+    { chave: 'valorMercadoria', aliases: ['valor_mercadoria', 'valor_mercadoria_bi', 'valor_nf', 'vl_mercadoria'] },
+    { chave: 'valorPrevistoBi', aliases: ['frete_previsto_bi', 'frete_previsto', 'frete_previsto_power_bi', 'valor_previsto', 'valor_previsto_bi', 'previsto_bi', 'valor_frete_sap', 'valor_sap', 'valor_sap_esperado', 'frete_sap', 'valor_esperado'] },
+    { chave: 'servicoContratado', aliases: ['servico_contratado', 'servico_sap', 'servico_bi'] },
+    // Fonte 3 (parte variável): cotações spot registradas no WhatsApp
+    { chave: 'cotacaoId', aliases: ['cotacao_id', 'id_cotacao', 'registro_cotacao'] },
+    { chave: 'cotacaoValor', aliases: ['valor_acordado', 'cotacao_valor', 'valor_cotacao'] },
+    { chave: 'cotacaoIcmsIncluso', aliases: ['icms_incluso', 'cotacao_icms_incluso'] },
+    { chave: 'cotacaoData', aliases: ['data_cotacao', 'cotacao_data'] },
+  ],
+
+  PAPEIS: {
+    fatura:    { titulo: 'Fatura carregada', vazio: 'Nenhum CT-e válido: confira NF, transportadora e valor cobrado.' },
+    bi:        { titulo: 'Relatório do Power BI carregado', vazio: 'Nenhuma nota válida: confira NF e frete previsto.' },
+    cotacoes:  { titulo: 'Cotações carregadas', vazio: 'Nenhuma cotação válida: confira NF e valor acordado.' },
+    combinado: { titulo: 'Planilha combinada carregada', vazio: 'Nenhum CT-e válido: confira NF, transportadora e valor cobrado.' },
+  },
+
+  // "Valor SAP (Esperado)" → "valor_sap_esperado"
+  normalizarCabecalho: (h) => normTxt(h).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''),
+
+  // Parser RFC 4180: aspas, aspas escapadas ("") e quebras de linha dentro de campos
+  parse(texto) {
+    texto = String(texto).replace(/^\uFEFF/, '');
+    const cabecalho = texto.split(/\r?\n/, 1)[0] || '';
+    const sep = (cabecalho.match(/;/g) || []).length >= (cabecalho.match(/,/g) || []).length ? ';' : ',';
+    const linhas = [];
+    let linha = [], campo = '', aspas = false;
+    for (let i = 0; i < texto.length; i++) {
+      const c = texto[i];
+      if (aspas) {
+        if (c === '"') { if (texto[i + 1] === '"') { campo += '"'; i++; } else aspas = false; }
+        else campo += c;
+      } else if (c === '"') aspas = true;
+      else if (c === sep) { linha.push(campo); campo = ''; }
+      else if (c === '\n' || c === '\r') {
+        if (c === '\r' && texto[i + 1] === '\n') i++;
+        linha.push(campo); linhas.push(linha); linha = []; campo = '';
+      } else campo += c;
+    }
+    if (campo !== '' || linha.length) { linha.push(campo); linhas.push(linha); }
+    return { sep, linhas: linhas.filter((l) => l.some((v) => v.trim() !== '')) };
+  },
+
+  // Aceita "1.234,56" (BR), "1234.56" (US), "R$ 1.234,56" e "12%"
+  parseNumero(v) {
+    let s = String(v ?? '').trim().replace(/[R$\s%]/g, '');
+    if (!s) return NaN;
+    const virgula = s.includes(','), ponto = s.includes('.');
+    if (virgula && ponto) s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+    else if (virgula) s = s.replace(',', '.');
+    else if ((s.match(/\./g) || []).length > 1) s = s.replace(/\./g, '');
+    const n = Number(s);
+    return Number.isFinite(n) ? n : NaN;
+  },
+  limparNumero(v) { const s = String(v ?? '').trim(); return s.replace(/\D/g, '') || s; },
+  normalizarServico(v) {
+    const s = normTxt(v).replace(/[^a-z]/g, '');
+    if (!s) return '';
+    if (s.includes('ecommerce')) return 'ECOMMERCE';
+    if (s.includes('standard') || s.includes('padrao')) return 'STANDARD';
+    if (s.includes('expresso') || s.includes('express')) return 'EXPRESSO';
+    if (s.includes('premium')) return 'PREMIUM';
+    return '';
+  },
+  normalizarModalidade(v) {
+    const s = normTxt(v);
+    if (!s) return '';
+    if (s.includes('tabela')) return 'TABELA_ICMS';
+    if (s.includes('calculadora')) return 'CALCULADORA';
+    if (s.includes('seletor') || s.includes('servico')) return 'SELETOR_SERVICO';
+    if (s.includes('spot') || s.includes('cotacao') || s.includes('whatsapp')) return 'COTACAO_SPOT';
+    if (s.includes('referencia') || s.includes('sem regra')) return 'REFERENCIA_BI';
+    return '';
+  },
+  normalizarBool(v) { const s = normTxt(v); return s ? ['sim', 's', 'true', '1', 'yes', 'incluso', 'x'].includes(s) : null; },
+  normalizarUF(v) { const uf = String(v ?? '').trim().toUpperCase(); return UFS.includes(uf) ? uf : ''; },
+  normalizarData(v) {
+    const s = String(v ?? '').trim();
+    let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+  },
+
+  // Excel em português costuma salvar CSV em Windows-1252: tenta UTF-8 e cai para ele
+  async lerArquivo(file) {
+    const buffer = await file.arrayBuffer();
+    try { return new TextDecoder('utf-8', { fatal: true }).decode(buffer); }
+    catch { return new TextDecoder('windows-1252').decode(buffer); }
+  },
+
+  indexar(cabecalho) {
+    const cab = cabecalho.map((h) => this.normalizarCabecalho(h));
+    const indice = {};
+    const usados = new Set();
+    for (const campo of this.CAMPOS) {
+      const idx = cab.findIndex((h, i) => !usados.has(i) && campo.aliases.includes(h));
+      if (idx >= 0) { indice[campo.chave] = idx; usados.add(idx); }
+    }
+    return indice;
+  },
+
+  // Qual planilha é esta? A resposta vem das colunas, não do nome do arquivo.
+  detectarPapel(indice) {
+    const tem = (k) => indice[k] !== undefined;
+    if (!tem('nf')) throw new Error('Coluna da NF não encontrada (nf, numero_nf ou nota_fiscal).');
+    if (tem('valorCte') && tem('valorPrevistoBi')) return 'combinado';
+    if (tem('valorCte')) return 'fatura';
+    if (tem('valorPrevistoBi')) return 'bi';
+    if (tem('cotacaoValor')) return 'cotacoes';
+    throw new Error('Planilha não reconhecida: falta o valor cobrado (fatura), o frete previsto (Power BI) ou o valor acordado (cotações).');
+  },
+
+  lerFatura(get, num, nf) {
+    const transportadora = get('transportadora');
+    const valorCte = num('valorCte');
+    if (!nf || !transportadora || valorCte === null) return null;
+    return {
+      nf, numeroCte: this.limparNumero(get('numeroCte')), fatura: get('fatura'), transportadora,
+      modalidadeInformada: this.normalizarModalidade(get('modalidadeInformada')),
+      ufOrigem: this.normalizarUF(get('ufOrigem')), ufDestino: this.normalizarUF(get('ufDestino')),
+      dataEmissao: this.normalizarData(get('dataEmissao')), valorCte: round2(valorCte),
+      pesoTaxadoCteKg: num('pesoTaxadoCteKg') ?? 0, fretePesoCte: num('fretePesoCte') ?? 0,
+      adValoremCte: num('adValoremCte') ?? 0, grisCte: num('grisCte') ?? 0,
+      aliquotaIcmsCte: num('aliquotaIcmsCte'), servicoCte: this.normalizarServico(get('servicoCte')),
+    };
+  },
+  lerBi(get, num, nf, papel) {
+    const valorPrevistoBi = num('valorPrevistoBi');
+    if (!nf || valorPrevistoBi === null) return null;
+    return {
+      nf, transportadora: get('transportadora'), modalidadeInformada: this.normalizarModalidade(get('modalidadeInformada')),
+      ufOrigem: this.normalizarUF(get('ufOrigem')), ufDestino: this.normalizarUF(get('ufDestino')),
+      pesoRealKg: num('pesoRealKg') ?? 0, volumeM3: num('volumeM3') ?? 0, valorMercadoria: num('valorMercadoria') ?? 0,
+      valorPrevistoBi: round2(valorPrevistoBi),
+      // num relatório do BI, uma coluna "servico" significa o serviço contratado
+      servicoContratado: this.normalizarServico(get('servicoContratado') || (papel === 'bi' ? get('servicoCte') : '')),
+    };
+  },
+  lerCotacao(get, num, nf) {
+    const valor = num('cotacaoValor');
+    if (!nf || valor === null || valor <= 0) return null;
+    return { nf, transportadora: get('transportadora'), cotacaoId: get('cotacaoId'), cotacaoValor: round2(valor),
+      cotacaoIcmsIncluso: this.normalizarBool(get('cotacaoIcmsIncluso')), cotacaoData: get('cotacaoData') };
+  },
+
+  // Converte a matriz do CSV nas fontes que ela contém
+  mapear(matriz) {
+    if (matriz.length < 2) throw new Error('O arquivo não tem linhas de dados abaixo do cabeçalho.');
+    const indice = this.indexar(matriz[0]);
+    const papel = this.detectarPapel(indice);
+    const leFatura = papel === 'fatura' || papel === 'combinado';
+    const leBi = papel === 'bi' || papel === 'combinado';
+    if (leFatura && indice.transportadora === undefined) throw new Error('A fatura precisa da coluna transportadora. Baixe o modelo da fatura para ver o formato.');
+    const fatura = [], bi = [], cotacoes = [];
+    let rejeitadas = 0;
+    for (let i = 1; i < matriz.length; i++) {
+      const linha = matriz[i];
+      const get = (chave) => (indice[chave] !== undefined ? String(linha[indice[chave]] ?? '').trim() : '');
+      const num = (chave) => { const n = this.parseNumero(get(chave)); return Number.isFinite(n) ? n : null; };
+      const nf = this.limparNumero(get('nf'));
+      let valida = false;
+      if (leFatura) { const f = this.lerFatura(get, num, nf); if (f) { fatura.push(f); valida = true; } }
+      if (leBi) { const b = this.lerBi(get, num, nf, papel); if (b) { bi.push(b); if (papel === 'bi') valida = true; } }
+      const cot = this.lerCotacao(get, num, nf);
+      if (cot) { cotacoes.push(cot); if (papel === 'cotacoes') valida = true; }
+      if (!valida) rejeitadas++;
+    }
+    const total = { fatura: fatura.length, combinado: fatura.length, bi: bi.length, cotacoes: cotacoes.length }[papel];
+    if (!total) throw new Error(this.PAPEIS[papel].vazio);
+    const avisos = [];
+    if (rejeitadas) avisos.push(`${pl(rejeitadas, 'linha ignorada', 'linhas ignoradas')} por falta de dados obrigatórios.`);
+    if (papel === 'combinado' && !bi.length) avisos.push('Nenhuma linha tem frete previsto: todas as NFs ficarão sem dados do Power BI.');
+    return { papel, fatura, bi, cotacoes, rejeitadas, avisos };
+  },
+
+  // Proteção contra "CSV injection": texto iniciado por = + - @ vira texto literal no Excel
+  celTexto(v) {
+    let s = String(v ?? '');
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  },
+  celNum: (v, casas = 2) => (Number.isFinite(v) ? v.toFixed(casas).replace('.', ',') : ''),
+
+  // Planilha padronizada: ";" como separador e vírgula decimal (abre direto no Excel em pt-BR).
+  // As colunas seguem as três fontes: fatura → Power BI → regra → resultado.
+  COLUNAS_EXPORT: [
+    ['Fatura', (l, t) => t(l.fatura)],
+    ['CT-e', (l, t) => t(l.numeroCte)],
+    ['NF', (l, t) => t(l.nf)],
+    ['Transportadora', (l, t) => t(l.transportadora)],
+    ['Regra / Modalidade', (l, t) => t(MODALIDADES[l.modalidade]?.nome || '')],
+    ['Modal', (l, t) => t(l.modal === 'AEREO' ? 'Aéreo' : 'Rodoviário')],
+    ['NF no Power BI', (l) => (l.temBi ? 'SIM' : 'NÃO')],
+    ['UF Origem', (l, t) => t(l.ufOrigem)],
+    ['UF Destino', (l, t) => t(l.ufDestino)],
+    ['Data Emissão CT-e', (l, t) => t(l.dataEmissao)],
+    ['Valor Cobrado Fatura', (l, t, n) => n(l.valorCte)],
+    ['Peso Taxado Fatura (kg)', (l, t, n) => n(l.pesoTaxadoCteKg)],
+    ['Frete-Peso Fatura', (l, t, n) => (l.fretePesoCte ? n(l.fretePesoCte) : '')],
+    ['Ad Valorem Fatura', (l, t, n) => (l.adValoremCte ? n(l.adValoremCte) : '')],
+    ['GRIS Fatura', (l, t, n) => (l.grisCte ? n(l.grisCte) : '')],
+    ['Alíquota ICMS Fatura (%)', (l, t, n) => n(l.aliquotaIcmsCte ?? NaN, 0)],
+    ['Serviço Faturado', (l, t) => t(NOME_SERVICO[l.servicoCte] || '')],
+    ['Peso Real BI (kg)', (l, t, n) => (l.temBi ? n(l.pesoRealKg) : '')],
+    ['Volume BI (m3)', (l, t, n) => (l.temBi ? n(l.volumeM3, 3) : '')],
+    ['Valor Mercadoria BI', (l, t, n) => (l.temBi ? n(l.valorMercadoria) : '')],
+    ['Serviço Contratado', (l, t) => t(NOME_SERVICO[l.servicoContratado] || '')],
+    ['Frete Previsto Power BI', (l, t, n) => n(l.valorPrevistoBi ?? NaN)],
+    ['Cotação ID', (l, t) => t(l.cotacaoId)],
+    ['Cotação Valor', (l, t, n) => n(l.cotacaoValor ?? NaN)],
+    ['Cotação ICMS Incluso', (l) => (l.cotacaoIcmsIncluso === true ? 'SIM' : l.cotacaoIcmsIncluso === false ? 'NÃO' : '')],
+    ['Cotação Data', (l, t) => t(l.cotacaoData)],
+    ['Peso Cubado (kg)', (l, t, n) => n(l.pesoCubadoKg ?? NaN)],
+    ['Peso Taxável (kg)', (l, t, n) => n(l.pesoTaxavelKg ?? NaN)],
+    ['Alíquota ICMS Esperada (%)', (l, t, n) => n(l.aliquotaIcmsEsperada ?? NaN, 0)],
+    ['Serviço Inferido', (l, t) => t(NOME_SERVICO[l.servicoInferido] || '')],
+    ['Devido pela Regra', (l, t, n) => n(l.devido ?? NaN)],
+    ['Diferença Fatura x BI (R$)', (l, t, n) => n(l.diferenca ?? NaN)],
+    ['Diferença Fatura x BI (%)', (l, t, n) => n(Number.isFinite(l.diferencaPct) ? l.diferencaPct * 100 : NaN)],
+    ['Excedente sobre a Regra (R$)', (l, t, n) => n(l.excedente ?? NaN)],
+    ['Tolerância (R$)', (l, t, n) => n(l.tolerancia)],
+    ['Status Auditoria', (l, t) => t(l.status)],
+    ['Diagnóstico IA', (l, t) => t(l.diagnostico)],
+    ['Categoria Principal', (l, t) => t(l.categoriaPrincipal || '')],
+    ['Ação Recomendada', (l, t) => t(ACAO_LABEL[l.acaoRecomendada] || '')],
+    ['Valor a Glosar (R$)', (l, t, n) => n(l.glosa)],
+    ['Valor a Pagar (R$)', (l, t, n) => n(l.valorAPagar ?? NaN)],
+    ['Requer Revisão Humana', (l) => (l.status === STATUS.AGUARDANDO ? '' : l.requerRevisaoHumana ? 'SIM' : 'NÃO')],
+    ['Achados', (l, t) => t((l.achados || []).map((a) => a.codigo).join(' | '))],
+    ['Defesa Técnica (resumo)', (l, t) => t(l.status === STATUS.AGUARDANDO ? '' : Defesa.fato(l))],
+    ['Auditado Em', (l, t) => t(l.auditadoEm || '')],
+  ],
+
+  montarExportacao(linhas) {
+    const t = (v) => this.celTexto(v);
+    const n = (v, casas) => this.celNum(v, casas);
+    const cabecalho = this.COLUNAS_EXPORT.map(([nome]) => this.celTexto(nome)).join(';');
+    const corpo = linhas.map((l) => this.COLUNAS_EXPORT.map(([, f]) => f(l, t, n)).join(';'));
+    return [cabecalho, ...corpo].join('\r\n');
+  },
+
+  // Três modelos coerentes entre si (mesmas NFs): enviar os três reproduz uma auditoria completa
+  modelos() {
+    const { fatura, bi, cotacoes } = DataGenerator.gerar(20, 7);
+    const t = (v) => this.celTexto(v);
+    const n = (v, casas = 2) => this.celNum(v, casas);
+    const nz = (v) => (v ? n(v) : '');
+    const csv = (cab, linhas) => [cab.join(';'), ...linhas.map((l) => l.join(';'))].join('\r\n');
+    return {
+      fatura: csv(['fatura', 'numero_cte', 'nf', 'transportadora', 'data_emissao', 'valor_cobrado', 'peso_taxado_kg', 'frete_peso', 'ad_valorem', 'gris', 'aliquota_icms', 'servico_faturado'],
+        fatura.map((f) => [t(f.fatura), f.numeroCte, f.nf, t(f.transportadora), f.dataEmissao, n(f.valorCte), n(f.pesoTaxadoCteKg), nz(f.fretePesoCte), nz(f.adValoremCte), nz(f.grisCte), n(f.aliquotaIcmsCte ?? NaN, 0), NOME_SERVICO[f.servicoCte] || ''])),
+      bi: csv(['nf', 'transportadora', 'uf_origem', 'uf_destino', 'peso_real_kg', 'volume_m3', 'valor_mercadoria', 'frete_previsto_bi', 'servico_contratado'],
+        bi.map((b) => [b.nf, t(b.transportadora), b.ufOrigem, b.ufDestino, n(b.pesoRealKg), n(b.volumeM3, 3), n(b.valorMercadoria), n(b.valorPrevistoBi), NOME_SERVICO[b.servicoContratado] || ''])),
+      cotacoes: csv(['cotacao_id', 'nf', 'transportadora', 'valor_acordado', 'icms_incluso', 'data_cotacao'],
+        cotacoes.map((c) => [t(c.cotacaoId), c.nf, t(c.transportadora), n(c.cotacaoValor), c.cotacaoIcmsIncluso === true ? 'SIM' : c.cotacaoIcmsIncluso === false ? 'NÃO' : '', t(c.cotacaoData)])),
+    };
+  },
+
+  // Download no navegador: Blob + URL temporária + <a download>. O BOM (\uFEFF) faz o Excel ler acentos.
+  baixar(nomeArquivo, conteudo, tipo = 'text/csv') {
+    const blob = new Blob(['\uFEFF' + conteudo], { type: `${tipo};charset=utf-8;` });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nomeArquivo;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  },
+};
+
+/* ---------- 8. Cruzamento: fatura × Power BI × cotações, pelo número da NF ---------- */
+const Cruzamento = {
+  // Chave: NF só com dígitos e sem zeros à esquerda. Em produção, o ideal é cruzar
+  // pela chave de acesso da NF-e (44 dígitos), que é única no país.
+  chave: (nf) => String(nf ?? '').replace(/\D/g, '').replace(/^0+/, '') || String(nf ?? '').trim(),
+
+  // Equivale a um LEFT JOIN: cada CT-e da fatura procura a sua nota no BI e a sua cotação
+  montar(fatura, bi, cotacoes = []) {
+    const indiceBi = new Map();
+    let biRepetidas = 0;
+    for (const n of bi) {
+      const k = this.chave(n.nf);
+      if (!k) continue;
+      if (indiceBi.has(k)) { biRepetidas++; continue; }   // NF repetida no BI: vale a primeira
+      indiceBi.set(k, n);
+    }
+    const indiceCot = new Map();
+    for (const c of cotacoes) { const k = this.chave(c.nf); if (k && !indiceCot.has(k)) indiceCot.set(k, c); }
+
+    const cobradas = new Set();
+    const registros = fatura.map((f, i) => {
+      const k = this.chave(f.nf);
+      const n = indiceBi.get(k);
+      const c = indiceCot.get(k);
+      if (n) cobradas.add(k);
+      const reg = {
+        id: 'r' + (i + 1), nf: f.nf, numeroCte: f.numeroCte || '', fatura: f.fatura || '', transportadora: f.transportadora,
+        dataEmissao: f.dataEmissao || '', modalidadeInformada: f.modalidadeInformada || n?.modalidadeInformada || '',
+        // Fonte 1: fatura da transportadora
+        valorCte: f.valorCte, pesoTaxadoCteKg: f.pesoTaxadoCteKg || 0, fretePesoCte: f.fretePesoCte || 0,
+        adValoremCte: f.adValoremCte || 0, grisCte: f.grisCte || 0,
+        aliquotaIcmsCte: Number.isFinite(f.aliquotaIcmsCte) ? f.aliquotaIcmsCte : null, servicoCte: f.servicoCte || '',
+        // Fonte 2: relatório Power BI (base interna)
+        temBi: !!n, ufOrigem: n?.ufOrigem || f.ufOrigem || '', ufDestino: n?.ufDestino || f.ufDestino || '',
+        pesoRealKg: n?.pesoRealKg || 0, volumeM3: n?.volumeM3 || 0, valorMercadoria: n?.valorMercadoria || 0,
+        valorPrevistoBi: n ? n.valorPrevistoBi : null, servicoContratado: n?.servicoContratado || '',
+        // Fonte 3: cotação spot registrada (WhatsApp)
+        cotacaoId: c?.cotacaoId || '', cotacaoValor: c ? c.cotacaoValor : null,
+        cotacaoIcmsIncluso: c ? c.cotacaoIcmsIncluso : null, cotacaoData: c?.cotacaoData || '',
+      };
+      if (f.cenarioSimulado) reg.cenarioSimulado = f.cenarioSimulado;   // só a simulação tem (usado nos testes)
+      return reg;
+    });
+    const notasBi = [...indiceBi.values()];
+    return {
+      registros,
+      stats: {
+        ctes: fatura.length,
+        transportadoras: new Set(fatura.map((f) => normTxt(f.transportadora))).size,
+        cobrado: somar(fatura, 'valorCte'),
+        notasBi: notasBi.length,
+        previsto: somar(notasBi, 'valorPrevistoBi'),
+        cruzados: registros.filter((r) => r.temBi).length,
+        semBi: registros.filter((r) => !r.temBi).length,
+        semCobranca: [...indiceBi.keys()].filter((k) => !cobradas.has(k)).length,
+        biRepetidas,
+        cotacoes: indiceCot.size,
+      },
+    };
+  },
+};
+
+/* ---------- 9. Regras específicas de cada modalidade ---------- */
+// Cada modalidade responde duas perguntas:
+//   calcular(): quanto deveria custar pela regra do contrato? (base sem ICMS + memória de cálculo)
+//   atribuir(): se a fatura cobrou a mais, qual item da regra explica o excedente?
+// x = contexto da nota: contrato, pesos, alíquotas e a base sem ICMS cobrada na fatura (baseCte).
+const TOL_C = CONFIG.TOLERANCIA_COMPONENTE;
+const pesoAcima = (r, x) => r.pesoTaxadoCteKg > x.taxavel * (1 + CONFIG.TOLERANCIA_PESO);
+
+function linhasPeso(r, x, rotulo = 'Peso taxável') {
+  return [
+    { item: 'Peso real', regra: 'Power BI (peso bruto da NF)', ref: Fmt.kg(r.pesoRealKg), cte: '' },
+    { item: 'Peso cubado', regra: `${Fmt.num(r.volumeM3, 3)} m³ do Power BI × ${x.contrato.fatorCubagem} kg/m³`, ref: Fmt.kg(x.cubado), cte: '' },
+    { item: rotulo, regra: 'maior entre real e cubado', ref: Fmt.kg(x.taxavel), cte: r.pesoTaxadoCteKg ? Fmt.kg(r.pesoTaxadoCteKg) : '—', alerta: pesoAcima(r, x) },
+  ];
+}
+
+const Motor = {
+  // 1) Tabela combinada + ICMS: rota × faixa de peso
+  TABELA_ICMS: {
+    calcular(r, x) {
+      const c = x.contrato;
+      const tabela = c.tabela[Regras.rota(r)];
+      const idx = Regras.faixa(c, x.taxavel);
+      const memoria = [
+        { item: 'Rota', regra: tabela ? 'rota do Power BI encontrada na tabela contratual' : 'rota não consta na tabela contratual', ref: rotaTxt(r), cte: '', alerta: !tabela },
+        ...linhasPeso(r, x),
+      ];
+      if (!tabela || idx < 0) {
+        const detalhe = !tabela ? `A rota ${rotaTxt(r)} não consta na tabela contratual da ${c.nome}` : `Peso taxável de ${Fmt.kg(x.taxavel)} acima da última faixa contratada`;
+        return { base: null, memoria, semBase: { codigo: 'ROTA_FORA_TABELA', detalhe } };
+      }
+      const base = tabela[idx];
+      // Qual faixa da tabela explica o valor cobrado na fatura?
+      const idxCobrada = tabela.findIndex((v) => Math.abs(v - x.baseCte) <= AuditEngine.tolerancia(v));
+      const faixaCorreta = Regras.rotuloFaixa(c, idx);
+      const faixaCobrada = idxCobrada >= 0 ? Regras.rotuloFaixa(c, idxCobrada) : '';
+      memoria.push({ item: 'Faixa de peso', regra: `enquadramento de ${Fmt.kg(x.taxavel)}`, ref: faixaCorreta, cte: faixaCobrada || 'nenhuma faixa', alerta: idxCobrada !== idx });
+      memoria.push({ item: 'Frete da faixa (sem ICMS)', regra: `tabela ${c.nome}, rota ${rotaTxt(r)}`, ref: Fmt.moeda(base), cte: Fmt.moeda(x.baseCte), alerta: x.baseCte - base > TOL_C });
+      return { base, memoria, extras: { idx, idxCobrada, faixaCorreta, faixaCobrada } };
+    },
+    atribuir(r, x, calc, excesso) {
+      const { idx, idxCobrada, faixaCorreta, faixaCobrada } = calc.extras;
+      if (!(idxCobrada > idx)) return [];
+      const declarado = pesoAcima(r, x) ? ` com peso taxado de ${Fmt.kg(r.pesoTaxadoCteKg)}` : '';
+      return [{ codigo: 'COBRANCA_ACIMA_FAIXA', valor: excesso, detalhe: `A fatura cobrou a faixa ${faixaCobrada}${declarado}; o peso taxável de ${Fmt.kg(x.taxavel)} enquadra na faixa ${faixaCorreta}` }];
+    },
+  },
+
+  // 2) Calculadora em massa: frete-peso + ad valorem + GRIS, componente a componente
+  CALCULADORA: {
+    calcular(r, x) {
+      const c = x.contrato;
+      const v = Regras.calculadora(c, x.taxavel, r.valorMercadoria);
+      const temComp = (r.fretePesoCte || 0) + (r.adValoremCte || 0) + (r.grisCte || 0) > 0;
+      const fat = (val) => (temComp ? Fmt.moeda(val || 0) : '—');
+      const acima = (val, ref) => temComp && (val || 0) - ref > TOL_C;
+      const memoria = [
+        ...linhasPeso(r, x, 'Peso taxado'),
+        { item: 'Frete-peso', regra: `${Fmt.kg(x.taxavel)} × ${Fmt.moeda(c.tarifaKg)}/kg, mínimo ${Fmt.moeda(c.fretePesoMinimo)}`, ref: Fmt.moeda(v.fretePeso), cte: fat(r.fretePesoCte), alerta: acima(r.fretePesoCte, v.fretePeso) },
+        { item: 'Ad valorem', regra: `${Fmt.num(c.adValoremPct, 2)}% × mercadoria de ${Fmt.moeda(r.valorMercadoria)} (Power BI)`, ref: Fmt.moeda(v.adValorem), cte: fat(r.adValoremCte), alerta: acima(r.adValoremCte, v.adValorem) },
+        { item: 'GRIS', regra: `${Fmt.num(c.grisPct, 2)}% × mercadoria, mínimo ${Fmt.moeda(c.grisMinimo)}`, ref: Fmt.moeda(v.gris), cte: fat(r.grisCte), alerta: acima(r.grisCte, v.gris) },
+        { item: 'Subtotal sem ICMS', regra: 'frete-peso + ad valorem + GRIS', ref: Fmt.moeda(v.subtotal), cte: Fmt.moeda(x.baseCte), alerta: x.baseCte - v.subtotal > TOL_C },
+      ];
+      return { base: v.subtotal, memoria, extras: { v, temComp } };
+    },
+    atribuir(r, x, calc) {
+      const c = x.contrato;
+      const { v, temComp } = calc.extras;
+      const out = [];
+      if (temComp) {
+        const exFP = round2((r.fretePesoCte || 0) - v.fretePeso);
+        if (exFP > TOL_C && pesoAcima(r, x)) out.push({ codigo: 'PESO_CUBADO_DIVERGENTE', valorBase: exFP, detalhe: `A fatura taxou ${Fmt.kg(r.pesoTaxadoCteKg)}; o correto é ${Fmt.kg(x.taxavel)} (maior entre real de ${Fmt.kg(r.pesoRealKg)} e cubado de ${Fmt.kg(x.cubado)})` });
+        const exAV = round2((r.adValoremCte || 0) - v.adValorem);
+        const pctAV = r.valorMercadoria ? (r.adValoremCte / r.valorMercadoria) * 100 : 0;
+        if (exAV > TOL_C) out.push({ codigo: 'AD_VALOREM_DIVERGENTE', valorBase: exAV, detalhe: `A fatura aplicou ${Fmt.num(pctAV, 2)}% sobre a mercadoria; o contrato prevê ${Fmt.num(c.adValoremPct, 2)}%` });
+        const exGR = round2((r.grisCte || 0) - v.gris);
+        if (exGR > TOL_C) out.push({ codigo: 'GRIS_DIVERGENTE', valorBase: exGR, detalhe: `A fatura cobrou GRIS de ${Fmt.moeda(r.grisCte)}; o contrato prevê ${Fmt.num(c.grisPct, 2)}% da mercadoria (${Fmt.moeda(v.gris)})` });
+      } else if (pesoAcima(r, x)) {
+        // Fatura sem componentes: estima o efeito do peso pela tarifa por kg
+        out.push({ codigo: 'PESO_CUBADO_DIVERGENTE', valorBase: round2((r.pesoTaxadoCteKg - x.taxavel) * c.tarifaKg), detalhe: `A fatura taxou ${Fmt.kg(r.pesoTaxadoCteKg)}; o correto é ${Fmt.kg(x.taxavel)} (efeito estimado pela tarifa de ${Fmt.moeda(c.tarifaKg)}/kg)` });
+      }
+      return out;
+    },
+    detalheResiduo(r, x, calc) {
+      const { v, temComp } = calc.extras;
+      if (temComp && (r.fretePesoCte || 0) - v.fretePeso > TOL_C) return `Frete-peso de ${Fmt.moeda(r.fretePesoCte)} acima do contratado (${Fmt.moeda(v.fretePeso)}) sem divergência de peso`;
+      return null;
+    },
+  },
+
+  // 3) Seletor de serviço: qual tarifa explica a fatura? Ela é a contratada?
+  SELETOR_SERVICO: {
+    calcular(r, x) {
+      const c = x.contrato;
+      const contratado = c.servicos[r.servicoContratado] ? r.servicoContratado : 'STANDARD';
+      const valores = ORDEM_SERVICOS.map((s) => ({ s, valor: Regras.servico(c, s, x.taxavel) }));
+      // Melhor adequação: a tarifa cujo valor fica mais perto da base cobrada na fatura
+      const inferido = valores.reduce((m, v) => (Math.abs(v.valor - x.baseCte) < Math.abs(m.valor - x.baseCte) ? v : m)).s;
+      const upgrade = ORDEM_SERVICOS.indexOf(inferido) > ORDEM_SERVICOS.indexOf(contratado);
+      const base = valores.find((v) => v.s === contratado).valor;
+      const memoria = [
+        { item: 'Serviço contratado', regra: r.servicoContratado ? 'Power BI (ordem de frete)' : 'não informado no Power BI; assumido Standard', ref: NOME_SERVICO[contratado], cte: r.servicoCte ? `${NOME_SERVICO[r.servicoCte]} (faturado)` : 'não declarado', alerta: !!r.servicoCte && r.servicoCte !== contratado },
+        ...linhasPeso(r, x, 'Peso taxável aéreo'),
+        ...valores.map(({ s, valor }) => ({
+          item: `Tarifa ${NOME_SERVICO[s]}${s === contratado ? ' (contratada)' : ''}`,
+          regra: `${Fmt.kg(x.taxavel)} × ${Fmt.moeda(c.servicos[s].tarifaKg)}/kg, mínimo ${Fmt.moeda(c.servicos[s].minimo)}, prazo ${c.servicos[s].prazo}`,
+          ref: Fmt.moeda(valor),
+          cte: s === inferido ? 'melhor adequação' : '',
+          alerta: s === inferido && upgrade,
+        })),
+        { item: 'Base cobrada (sem ICMS)', regra: `comparada à tarifa ${NOME_SERVICO[contratado]}`, ref: Fmt.moeda(base), cte: Fmt.moeda(x.baseCte), alerta: x.baseCte - base > TOL_C },
+      ];
+      return { base, memoria, extras: { contratado, inferido, upgrade } };
+    },
+    atribuir(r, x, calc, excesso) {
+      const { contratado, inferido, upgrade } = calc.extras;
+      if (!upgrade) return [];
+      const declarado = r.servicoCte ? `; a fatura declara ${NOME_SERVICO[r.servicoCte]}` : '';
+      return [{ codigo: 'SERVICO_SUPERIOR_FATURADO', valor: excesso, detalhe: `O valor cobrado corresponde à tarifa ${NOME_SERVICO[inferido]}, mas o contratado é ${NOME_SERVICO[contratado]}${declarado}` }];
+    },
+  },
+
+  // 4) Cotação spot (WhatsApp): valor acordado × previsto no Power BI × cobrado na fatura
+  COTACAO_SPOT: {
+    calcular(r, x) {
+      const tem = Number.isFinite(r.cotacaoValor) && r.cotacaoValor > 0;
+      const memoria = [{ item: 'Registro da cotação', regra: tem ? `${r.cotacaoId || 'sem ID'} · WhatsApp${r.cotacaoData ? ' · ' + r.cotacaoData : ''}` : 'nenhum registro localizado', ref: tem ? Fmt.moeda(r.cotacaoValor) : '—', cte: '', alerta: !tem }];
+      if (!tem) {
+        memoria.push({ item: 'Previsto no Power BI', regra: 'sem cotação que comprove o valor', ref: Fmt.moeda(r.valorPrevistoBi), cte: '' });
+        return { base: null, memoria, semBase: { codigo: 'COTACAO_AUSENTE', detalhe: 'Nenhuma cotação spot (WhatsApp) registrada para esta NF' } };
+      }
+      const incluso = r.cotacaoIcmsIncluso !== false;
+      const devido = incluso ? round2(r.cotacaoValor) : Regras.comIcms(r.cotacaoValor, x.aliqCalc);
+      const regraIcms = incluso
+        ? (r.cotacaoIcmsIncluso === null ? 'condição não informada; assumido ICMS incluso' : 'ICMS incluso no valor acordado')
+        : `ICMS por fora: ${Fmt.moeda(r.cotacaoValor)} ÷ (1 − ${Fmt.num(x.aliqCalc / 100, 2)})`;
+      memoria.push({ item: `Condição de ICMS (${Fmt.num(x.aliqCalc, 0)}%)`, regra: regraIcms, ref: Fmt.moeda(devido), cte: `${Fmt.moeda(r.valorCte)} (${Fmt.num(x.aliqCte, 0)}%)`, alerta: r.valorCte - devido > AuditEngine.tolerancia(devido) });
+      const biConfere = Math.abs(r.valorPrevistoBi - devido) <= AuditEngine.tolerancia(devido);
+      memoria.push({ item: 'Previsto no Power BI', regra: biConfere ? 'confere com a cotação' : 'diverge da cotação', ref: Fmt.moeda(r.valorPrevistoBi), cte: '', alerta: !biConfere });
+      // totalFixo: com ICMS incluso, o total acordado não muda se a alíquota da fatura estiver errada
+      return { base: incluso ? Regras.semIcms(r.cotacaoValor, x.aliqCalc) : r.cotacaoValor, devido, totalFixo: incluso, linhaIcms: false, memoria, extras: { incluso } };
+    },
+    atribuir(r, x, calc, excesso) {
+      const porFora = calc.extras.incluso && Math.abs(x.baseCte - r.cotacaoValor) <= AuditEngine.tolerancia(r.cotacaoValor);
+      const detalhe = porFora
+        ? `A transportadora somou ICMS por fora sobre a cotação ${r.cotacaoId}, fechada com ICMS incluso em ${Fmt.moeda(r.cotacaoValor)}`
+        : `Fatura acima do valor acordado na cotação ${r.cotacaoId} (${Fmt.moeda(calc.devido)})`;
+      return [{ codigo: 'COTACAO_DIVERGENTE', valor: excesso, detalhe }];
+    },
+  },
+
+  // Sem contrato cadastrado: o frete previsto no Power BI vira a referência
+  REFERENCIA_BI: {
+    calcular(r, x) {
+      const memoria = [{ item: 'Sem regra cadastrada', regra: `${x.contrato.nome} não tem contrato no motor; referência = frete previsto no Power BI`, ref: Fmt.moeda(r.valorPrevistoBi), cte: '' }];
+      return { base: Regras.semIcms(r.valorPrevistoBi, x.aliqCalc), devido: r.valorPrevistoBi, totalFixo: true, linhaIcms: false, memoria };
+    },
+    atribuir: () => [],
+    detalheResiduo: (r) => `Fatura acima do frete previsto no Power BI (${Fmt.moeda(r.valorPrevistoBi)}) e sem regra contratual cadastrada`,
+  },
+};
+
+/* ---------- 10. Motor de auditoria (determinístico: os números vêm daqui, nunca do LLM) ---------- */
+const AuditEngine = {
+  tolerancia: (ref) => round2(Math.max(CONFIG.TOLERANCIA_ABS, Math.abs(ref || 0) * CONFIG.TOLERANCIA_PCT)),
+  chaveCte: (r) => (r.numeroCte ? normTxt(r.transportadora) + '|' + String(r.numeroCte).replace(/^0+/, '') : null),
+
+  // Audita UM CT-e já cruzado. "vistos" guarda os CT-es processados (detecção de duplicidade).
+  // Ordem: duplicidade → NF no Power BI → regra da modalidade → ICMS → excedente por causa → BI × regra.
+  auditar(r, vistos) {
+    const contrato = Contratos.resolver(r);
+    const mod = Motor[contrato.modalidade];
+    const { cubado, taxavel } = Regras.pesos(r, contrato);
+    const aliqEsp = Fiscal.aliquotaInterestadual(r.ufOrigem, r.ufDestino, contrato.modal);
+    const aliqCte = Number.isFinite(r.aliquotaIcmsCte) ? r.aliquotaIcmsCte : aliqEsp ?? 0;
+    const aliqCalc = aliqEsp ?? aliqCte;                    // alíquota usada no recálculo
+    const baseCte = Regras.semIcms(r.valorCte, aliqCte);    // base sem ICMS cobrada na fatura
+    const x = { contrato, cubado, taxavel, aliqEsp, aliqCte, aliqCalc, baseCte };
+    const temBi = !!r.temBi && Number.isFinite(r.valorPrevistoBi);
+    const diferenca = temBi ? round2(r.valorCte - r.valorPrevistoBi) : null;
+    const achados = [];
+    let memoria = [], devido = null, extras = {};
+
+    const chave = this.chaveCte(r);
+    const nfOriginal = chave ? vistos.get(chave) : undefined;
+    if (nfOriginal !== undefined) {
+      // R1 · Duplicidade: aparece na chave do documento, não na diferença de valor
+      achados.push({ codigo: 'DUPLICIDADE', valor: r.valorCte, detalhe: `CT-e ${r.numeroCte} já foi cobrado nesta fatura para a NF ${nfOriginal}` });
+      devido = 0;
+      extras = { nfOriginal };
+      memoria = [{ item: 'CT-e já cobrado', regra: `mesmo CT-e lançado para a NF ${nfOriginal}`, ref: Fmt.moeda(0), cte: Fmt.moeda(r.valorCte), alerta: true, total: true }];
+    } else {
+      if (chave) vistos.set(chave, r.nf);
+      if (!temBi) {
+        // R2 · Cruzamento: sem a nota no Power BI não há peso, rota nem mercadoria para recalcular
+        achados.push({ codigo: 'NF_NAO_LOCALIZADA_BI', valor: 0, detalhe: `A NF ${r.nf} cobrada na fatura não consta no relatório do Power BI` });
+        memoria = [
+          { item: 'NF no Power BI', regra: 'cruzamento pelo número da NF', ref: 'não localizada', cte: `NF ${r.nf}`, alerta: true },
+          { item: 'Valor da prestação', regra: 'sem peso, rota e mercadoria para recalcular', ref: '—', cte: Fmt.moeda(r.valorCte), alerta: true, total: true },
+        ];
+      } else {
+        // R3 · Regra da modalidade: quanto deveria custar?
+        const calc = mod.calcular(r, x);
+        memoria = calc.memoria;
+        extras = calc.extras || {};
+        // R4 · ICMS: alíquota destacada na fatura × alíquota interestadual esperada
+        let efeitoIcms = 0;
+        if (aliqEsp !== null && Number.isFinite(r.aliquotaIcmsCte) && Math.abs(r.aliquotaIcmsCte - aliqEsp) > 0.001) {
+          efeitoIcms = calc.totalFixo ? 0 : round2(r.valorCte - Regras.comIcms(baseCte, aliqEsp));
+          achados.push({ codigo: 'ALIQUOTA_ICMS_DIVERGENTE', valor: Math.max(efeitoIcms, 0), detalhe: `A fatura destacou ICMS de ${Fmt.num(r.aliquotaIcmsCte, 0)}%; a prestação ${contrato.modal === 'AEREO' ? 'aérea ' : ''}${rotaTxt(r)} exige ${aliqEsp}%` });
+        }
+        if (calc.base === null) {
+          achados.push({ codigo: calc.semBase.codigo, valor: 0, detalhe: calc.semBase.detalhe });
+        } else {
+          devido = calc.devido ?? Regras.comIcms(calc.base, aliqCalc);
+          const tol = this.tolerancia(devido);
+          // R5 · Excedente: o que a fatura cobrou acima da regra, já sem o efeito do ICMS
+          let restante = round2(r.valorCte - efeitoIcms - devido);
+          for (const a of mod.atribuir(r, x, calc, restante)) {
+            const bruto = a.valor ?? a.valorBase / (1 - aliqCalc / 100);
+            const v = round2(clamp(bruto, 0, Math.max(restante, 0)));
+            if (v > 0) { achados.push({ codigo: a.codigo, valor: v, detalhe: a.detalhe }); restante = round2(restante - v); }
+          }
+          if (restante > tol) {
+            achados.push({ codigo: 'TARIFA_ACIMA_TABELA', valor: restante, detalhe: mod.detalheResiduo?.(r, x, calc) || `Excedente de ${Fmt.moeda(restante)} sem causa identificada na regra ${MODALIDADES[contrato.modalidade].curto}` });
+          } else if (restante < -tol) {
+            achados.push({ codigo: 'VALOR_ABAIXO_ESPERADO', valor: 0, detalhe: `Fatura ${Fmt.moeda(-restante)} abaixo do devido pela regra` });
+          }
+          // R6 · Power BI × regra: a previsão interna bate com o que o contrato manda pagar?
+          if (Math.abs(r.valorPrevistoBi - devido) > tol) {
+            achados.push({ codigo: 'BI_DIVERGENTE_REGRA', valor: 0, detalhe: `Power BI com ${Fmt.moeda(r.valorPrevistoBi)}; ${contrato.modalidade === 'COTACAO_SPOT' ? 'a cotação' : 'a regra'} resulta em ${Fmt.moeda(devido)}` });
+          }
+        }
+        if (calc.base !== null && calc.linhaIcms !== false) {
+          memoria.push({ item: `ICMS por dentro (${Fmt.num(aliqCalc, 0)}%)`, regra: aliqEsp === null ? 'operação interna: alíquota da fatura aceita' : `${Fmt.moeda(calc.base)} ÷ (1 − ${Fmt.num(aliqCalc / 100, 2)})`, ref: Fmt.moeda(devido), cte: `${Fmt.moeda(r.valorCte)} (${Fmt.num(aliqCte, 0)}%)`, alerta: efeitoIcms > 0 });
+        }
+        memoria.push({ item: 'Valor da prestação', regra: devido === null ? 'sem base contratual para recalcular' : 'devido pela regra × cobrado na fatura', ref: devido === null ? '—' : Fmt.moeda(devido), cte: Fmt.moeda(r.valorCte), alerta: devido === null || r.valorCte - devido > this.tolerancia(devido), total: true });
+      }
+    }
+
+    // Decisão: crítica > atenção > aprovado
+    const criticos = achados.filter((a) => ACHADOS[a.codigo].sev === 'critica');
+    const atencao = achados.filter((a) => ACHADOS[a.codigo].sev === 'atencao');
+    const status = criticos.length ? STATUS.CRITICA : atencao.length ? STATUS.ANALISE : STATUS.APROVADO;
+    const ordem = (a, b) => ORDEM_ACHADOS.indexOf(a.codigo) - ORDEM_ACHADOS.indexOf(b.codigo);
+    const principal = criticos.length ? [...criticos].sort((a, b) => b.valor - a.valor || ordem(a, b))[0] : [...atencao].sort(ordem)[0] || null;
+    const adicionais = criticos.length + atencao.length - 1;
+    const categoriaPrincipal = principal ? principal.codigo : 'APROVADO';
+    const diagnostico = principal ? ACHADOS[principal.codigo].rotulo + (adicionais > 0 ? ` (+${adicionais})` : '') : 'Aprovado';
+    const glosa = round2(criticos.reduce((s, a) => s + a.valor, 0));
+
+    return {
+      ...r, modalidade: contrato.modalidade, modal: contrato.modal, contratoGenerico: !!contrato.generico, temBi,
+      diferenca, diferencaPct: temBi && r.valorPrevistoBi > 0 ? diferenca / r.valorPrevistoBi : null,
+      tolerancia: this.tolerancia(devido ?? r.valorPrevistoBi ?? r.valorCte),
+      devido, excedente: devido === null ? null : round2(r.valorCte - devido),
+      pesoCubadoKg: cubado, pesoTaxavelKg: taxavel, aliquotaIcmsEsperada: aliqEsp,
+      servicoInferido: extras.inferido || '', faixaCorreta: extras.faixaCorreta || '', faixaCobrada: extras.faixaCobrada || '',
+      nfOriginal: extras.nfOriginal || '', componentes: extras.v || null,
+      memoria, achados, status, categoriaPrincipal, diagnostico, glosa,
+      valorAPagar: round2(Math.max(r.valorCte - glosa, 0)),
+      acaoRecomendada: principal ? ACHADOS[principal.codigo].acao : 'APROVAR_PAGAMENTO',
+      requerRevisaoHumana: status === STATUS.ANALISE || glosa >= CONFIG.ALCADA_REVISAO_HUMANA || categoriaPrincipal === 'TARIFA_ACIMA_TABELA' || criticos.length > 1 || !!contrato.generico,
+      auditadoEm: new Date().toISOString(),
+    };
+  },
+
+  auditarBase(registros) {
+    const vistos = new Map();
+    return registros.map((r) => this.auditar(r, vistos));
+  },
+};
+
+/* ---------- 11. Defesa técnica para o Financeiro (texto pronto para e-mail) ---------- */
+const Defesa = {
+  titulo(l) {
+    if (l.status === STATUS.CRITICA) return 'Defesa técnica de glosa';
+    if (l.status === STATUS.ANALISE) return 'Justificativa de bloqueio preventivo';
+    return 'Parecer de conformidade para pagamento';
+  },
+  doc: (l) => `O CT-e ${l.numeroCte || 's/nº'} (NF ${l.nf}, ${l.transportadora}${l.fatura ? `, fatura ${l.fatura}` : ''})`,
+
+  // Parágrafo "fato apurado": também compõe o campo "parecer" do JSON
+  fato(l) {
+    const doc = this.doc(l);
+    const tem = (cod) => l.achados.find((a) => a.codigo === cod);
+    if (tem('DUPLICIDADE')) return `${doc} já foi cobrado para a NF ${l.nfOriginal}. A nova cobrança de ${Fmt.moeda(l.valorCte)} é duplicada e não tem causa operacional.`;
+    if (tem('NF_NAO_LOCALIZADA_BI')) return `${doc} cobra ${Fmt.moeda(l.valorCte)}, mas a NF não consta no relatório do Power BI. Sem a nota na base interna não há peso, rota nem valor de mercadoria para validar o frete.`;
+    if (l.devido === null) {
+      return tem('COTACAO_AUSENTE')
+        ? `${doc} foi faturado em ${Fmt.moeda(l.valorCte)} como frete spot, mas não há registro da cotação (WhatsApp) que comprove o valor acordado.`
+        : `${doc} foi faturado em ${Fmt.moeda(l.valorCte)} na rota ${rotaTxt(l)}, que não consta na tabela contratual. Sem base contratual, o valor não pode ser validado.`;
+    }
+    const base = `${doc} foi faturado em ${Fmt.moeda(l.valorCte)}; pela regra "${MODALIDADES[l.modalidade].nome}", o valor devido é ${Fmt.moeda(l.devido)}`;
+    const criticos = l.achados.filter((a) => ACHADOS[a.codigo].sev === 'critica');
+    const atencao = l.achados.filter((a) => ACHADOS[a.codigo].sev === 'atencao');
+    if (l.glosa > 0) return `${base}. A diferença de ${Fmt.moeda(l.glosa)} não tem respaldo contratual: ${criticos.map((a) => inicialMinuscula(ACHADOS[a.codigo].rotulo)).join(', ')}.`;
+    if (criticos.length) return `${base}, mas o documento tem erro fiscal: ${inicialMinuscula(criticos[0].detalhe)}.`;
+    if (atencao.length) return `${base}, porém há pendência que impede a liberação: ${inicialMinuscula(atencao[0].detalhe)}.`;
+    return `${base}, dentro da tolerância de ${Fmt.moeda(l.tolerancia)}, e confere com o frete previsto no Power BI.`;
+  },
+
+  encaminhamento(l) {
+    const t = l.transportadora;
+    switch (l.acaoRecomendada) {
+      case 'GLOSAR_E_NOTIFICAR_TRANSPORTADORA':
+        return l.categoriaPrincipal === 'DUPLICIDADE'
+          ? `Glosar o valor integral de ${Fmt.moeda(l.glosa)} e solicitar à ${t} o cancelamento da cobrança duplicada.`
+          : `Glosar ${Fmt.moeda(l.glosa)} e pagar ${Fmt.moeda(l.valorAPagar)}. Notificar a ${t} para emitir CT-e de substituição com o valor devido, anexando esta memória de cálculo.`;
+      case 'SOLICITAR_CORRECAO_CTE':
+        return `Solicitar à ${t} CT-e de substituição com a alíquota de ${l.aliquotaIcmsEsperada}% (alíquota não se corrige por carta de correção).${l.glosa > 0 ? ` Glosar ${Fmt.moeda(l.glosa)} até a regularização.` : ''}`;
+      case 'VALIDAR_NF_BASE_INTERNA':
+        return `Bloquear o pagamento de ${Fmt.moeda(l.valorCte)} e validar com a Logística se a NF ${l.nf} pertence à empresa e ao período. Se a nota não for reconhecida, glosar o valor integral e devolver o CT-e à ${t}.`;
+      case 'VALIDAR_COM_SUPRIMENTOS': return `Bloquear o pagamento e acionar Suprimentos para formalizar a rota ${rotaTxt(l)} (cotação formal ou aditivo à tabela).`;
+      case 'SOLICITAR_EVIDENCIA_COTACAO': return 'Bloquear o pagamento até anexar a evidência da negociação (print do WhatsApp ou e-mail de confirmação) com o valor acordado.';
+      case 'CORRIGIR_PREVISAO_BI': return `A fatura está correta. Corrigir o frete previsto na base interna (SAP, fonte do Power BI) de ${Fmt.moeda(l.valorPrevistoBi)} para ${Fmt.moeda(l.devido)} e liberar o pagamento de ${Fmt.moeda(l.valorCte)}.`;
+      case 'MONITORAR_CTE_COMPLEMENTAR': return `Liberar o valor cobrado de ${Fmt.moeda(l.valorCte)} e monitorar eventual CT-e complementar da ${t}.`;
+      default: return `Liberar o pagamento integral de ${Fmt.moeda(l.valorCte)}.`;
+    }
+  },
+
+  motivoRevisao(l) {
+    if (!l.requerRevisaoHumana) return 'não necessária (decisão dentro da alçada automática)';
+    if (l.contratoGenerico) return 'necessária (transportadora sem regra cadastrada)';
+    if (l.status === STATUS.ANALISE) return 'necessária (pendência a resolver antes da liberação)';
+    if (l.glosa >= CONFIG.ALCADA_REVISAO_HUMANA) return `necessária (glosa acima da alçada de ${Fmt.moeda(CONFIG.ALCADA_REVISAO_HUMANA)})`;
+    if (l.categoriaPrincipal === 'TARIFA_ACIMA_TABELA') return 'necessária (excedente sem causa específica)';
+    return 'necessária (mais de uma divergência na mesma nota)';
+  },
+
+  // As três fontes do cruzamento, em linguagem de e-mail
+  fontes(l) {
+    const fat = [`cobrado ${Fmt.moeda(l.valorCte)}`];
+    if (l.pesoTaxadoCteKg) fat.push(`peso taxado ${Fmt.kg(l.pesoTaxadoCteKg)}`);
+    if (Number.isFinite(l.aliquotaIcmsCte)) fat.push(`ICMS ${Fmt.num(l.aliquotaIcmsCte, 0)}%`);
+    if (l.fretePesoCte || l.adValoremCte || l.grisCte) fat.push(`frete-peso ${Fmt.moeda(l.fretePesoCte)}, ad valorem ${Fmt.moeda(l.adValoremCte)}, GRIS ${Fmt.moeda(l.grisCte)}`);
+    if (l.servicoCte) fat.push(`serviço faturado ${NOME_SERVICO[l.servicoCte]}`);
+    const bi = l.temBi
+      ? [`NF ${l.nf}`, rotaTxt(l), `peso real ${Fmt.kg(l.pesoRealKg)}`, `volume ${Fmt.num(l.volumeM3, 3)} m³`, `mercadoria ${Fmt.moeda(l.valorMercadoria)}`, `frete previsto ${Fmt.moeda(l.valorPrevistoBi)}`]
+        .concat(l.servicoContratado ? [`serviço contratado ${NOME_SERVICO[l.servicoContratado]}`] : []).join(', ')
+      : `NF ${l.nf} não localizada no relatório`;
+    const regra = `${MODALIDADES[l.modalidade].nome}${l.contratoGenerico ? '' : ` (contrato ${l.transportadora})`}: ${l.devido === null ? 'sem base para recalcular' : `devido ${Fmt.moeda(l.devido)}`}`
+      + (l.servicoInferido ? `; tarifa que explica a fatura: ${NOME_SERVICO[l.servicoInferido]}` : '')
+      + (l.faixaCorreta ? `; faixa correta ${l.faixaCorreta}` : '');
+    const linhas = [
+      `• Fatura da transportadora: CT-e ${l.numeroCte || 's/nº'}${l.fatura ? ` (fatura ${l.fatura})` : ''}, ${fat.join(', ')}`,
+      `• Relatório Power BI: ${bi}`,
+      `• Regra comercial: ${regra}`,
+    ];
+    if (l.modalidade === 'COTACAO_SPOT' && l.cotacaoValor) linhas.push(`• Cotação WhatsApp ${l.cotacaoId}${l.cotacaoData ? ` de ${l.cotacaoData}` : ''}: ${Fmt.moeda(l.cotacaoValor)} ${l.cotacaoIcmsIncluso === false ? '+ ICMS' : 'com ICMS incluso'}`);
+    return linhas;
+  },
+
+  texto(l) {
+    const linhaMem = (x) => `• ${x.item}${x.regra ? ` (${x.regra})` : ''}: ${x.ref || '—'}${x.cte ? ` · na fatura: ${x.cte}` : ''}${x.alerta ? ' (divergente)' : ''}`;
+    const problemas = l.achados;
+    const secao3 = l.status === STATUS.CRITICA ? 'Divergências comprovadas' : l.status === STATUS.ANALISE ? 'Pendências' : 'Verificações';
+    const itens3 = problemas.length
+      ? problemas.map((a) => `• ${ACHADOS[a.codigo].rotulo}${a.valor ? `: ${Fmt.moeda(a.valor)}` : ''}. ${a.detalhe}.`)
+      : ['• Valor da fatura conforme a regra contratual, dentro da tolerância.', '• Frete previsto no Power BI confere com a regra.'];
+    return [
+      this.titulo(l),
+      `NF ${l.nf} · CT-e ${l.numeroCte || 's/nº'} · ${l.transportadora}${l.fatura ? ` · fatura ${l.fatura}` : ''}`,
+      `Regra aplicada: ${MODALIDADES[l.modalidade].nome}`,
+      'Cruzamento: fatura da transportadora × relatório Power BI × regra comercial',
+      'Para: Contas a Pagar (Financeiro) · Cópia: Gestão de Logística',
+      `Data da auditoria: ${new Date(l.auditadoEm || Date.now()).toLocaleDateString('pt-BR')}`,
+      '',
+      '1. Fato apurado',
+      this.fato(l),
+      '',
+      '2. Memória de cálculo',
+      ...l.memoria.map(linhaMem),
+      '',
+      `3. ${secao3}`,
+      ...itens3,
+      '',
+      '4. Cruzamento das fontes',
+      ...this.fontes(l),
+      '',
+      '5. Encaminhamento',
+      this.encaminhamento(l),
+      `Revisão humana: ${this.motivoRevisao(l)}.`,
+      '',
+      'Auditoria automatizada pelo Agente Auditor IA (FreteAudit) · parecer_auditoria_v3',
+    ].join('\n');
+  },
+};
+
+/* ---------- 12. Parecer estruturado (mesmo JSON Schema do system_prompt_agente.md) ---------- */
+const Parecer = {
+  passos(l) {
+    const p = [`Regra: ${MODALIDADES[l.modalidade].nome}.`];
+    p.push(l.temBi
+      ? `Fatura ${Fmt.moeda(l.valorCte)} × Power BI ${Fmt.moeda(l.valorPrevistoBi)}: diferença de ${Fmt.moedaSinal(l.diferenca)} (tolerância ${Fmt.moeda(l.tolerancia)}).`
+      : `Fatura ${Fmt.moeda(l.valorCte)}; NF não localizada no Power BI.`);
+    p.push(l.devido === null ? 'Sem base para recalcular o frete.' : `Recalculado pela regra: devido ${Fmt.moeda(l.devido)}.`);
+    for (const a of l.achados.slice(0, 2)) p.push(`${ACHADOS[a.codigo].rotulo}: ${a.detalhe}.`);
+    p.push(`Decisão: ${l.status}.`);
+    return p.slice(0, 6);
+  },
+  inconsistencias(l) {
+    if (!l.temBi) return ['NF não localizada no Power BI: peso, rota e mercadoria indisponíveis.'];
+    const i = [];
+    if (!l.ufOrigem || !l.ufDestino) i.push('UF de origem ou destino ausente no Power BI: regra de ICMS não aplicada.');
+    else if (l.ufOrigem === l.ufDestino) i.push('Operação interna: alíquota interna da UF não validada por esta regra.');
+    if (!l.pesoTaxadoCteKg && l.modalidade !== 'COTACAO_SPOT') i.push('Peso taxado ausente na fatura.');
+    if (!l.numeroCte) i.push('Número do CT-e ausente: checagem de duplicidade não aplicada.');
+    if (l.modalidade === 'CALCULADORA' && !(l.fretePesoCte || l.adValoremCte || l.grisCte)) i.push('Fatura sem componentes: efeito da cubagem estimado pela tarifa.');
+    if (l.modalidade === 'SELETOR_SERVICO' && !l.servicoContratado) i.push('Serviço contratado ausente no Power BI: assumido Standard.');
+    if (l.modalidade === 'COTACAO_SPOT' && l.cotacaoValor && l.cotacaoIcmsIncluso === null) i.push('Condição de ICMS da cotação não informada: assumido incluso.');
+    return i;
+  },
+  gerar(l) {
+    const inconsistencias = this.inconsistencias(l);
+    const base = l.categoriaPrincipal === 'APROVADO' ? 0.97 : ACHADOS[l.categoriaPrincipal].confianca;
+    return {
+      nf: l.nf,
+      numero_cte: l.numeroCte || null,
+      fatura: l.fatura || null,
+      transportadora: l.transportadora,
+      modalidade: l.modalidade,
+      status_auditoria: l.status,
+      diagnostico: l.diagnostico,
+      categoria_principal: l.categoriaPrincipal,
+      nf_localizada_power_bi: !!l.temBi,
+      valor_cobrado_fatura: l.valorCte,
+      valor_previsto_power_bi: l.valorPrevistoBi,
+      valor_devido_regra: l.devido,
+      valor_glosa_recomendado: l.glosa,
+      valor_a_pagar: l.valorAPagar,
+      nivel_confianca: round2(clamp(base - 0.05 * inconsistencias.length, 0, 1)),
+      passos_verificacao: this.passos(l),
+      memoria_calculo: l.memoria.map((m) => ({ item: m.item, regra: m.regra, referencia: m.ref, fatura: m.cte })),
+      parecer: `${Defesa.fato(l)} ${Defesa.encaminhamento(l)}`,
+      defesa_tecnica: Defesa.texto(l),
+      acao_recomendada: l.acaoRecomendada,
+      requer_revisao_humana: l.requerRevisaoHumana,
+      inconsistencias_detectadas: inconsistencias,
+    };
+  },
+};
+
+/* ---------- 13. Narrador do log técnico: Pensamento → Ação → Observação ---------- */
+const Narrator = {
+  INTRO: {
+    TABELA_ICMS: (l) => `${l.transportadora} usa tabela combinada: vou enquadrar a rota e a faixa de peso do Power BI e aplicar o ICMS por dentro.`,
+    CALCULADORA: (l) => `${l.transportadora} tem calculadora própria: vou reproduzir o motor (frete-peso, ad valorem e GRIS) e comparar com cada componente da fatura.`,
+    SELETOR_SERVICO: (l) => `${l.transportadora} trabalha com seletor de serviço: vou descobrir qual tarifa explica a fatura e comparar com a contratada no Power BI.`,
+    COTACAO_SPOT: (l) => `${l.transportadora} foi contratada por cotação spot: preciso cruzar o valor acordado no WhatsApp com o Power BI e a fatura.`,
+    REFERENCIA_BI: (l) => `${l.transportadora} não tem regra cadastrada: a referência será o frete previsto no Power BI.`,
+  },
+
+  recalculo(l) {
+    const L = [];
+    const devidoTxt = l.devido !== null ? `devido ${Fmt.moeda(l.devido)}` : '';
+    switch (l.modalidade) {
+      case 'TABELA_ICMS':
+        L.push(['acao', `contrato.tabela_combinada(rota="${l.ufOrigem}-${l.ufDestino}", peso_taxavel=${Fmt.num(l.pesoTaxavelKg, 1)})`]);
+        L.push(['observacao', l.devido === null ? `Rota ${rotaTxt(l)} não consta na tabela da ${l.transportadora}` : `Faixa ${l.faixaCorreta} · ${devidoTxt} com ICMS de ${l.aliquotaIcmsEsperada ?? l.aliquotaIcmsCte}%${l.faixaCobrada && l.faixaCobrada !== l.faixaCorreta ? ` · a fatura bate com a faixa ${l.faixaCobrada}` : ''}`]);
+        break;
+      case 'CALCULADORA': {
+        const v = l.componentes;
+        L.push(['acao', `calculadora.recalcular(transportadora="${l.transportadora}", peso_real=${Fmt.num(l.pesoRealKg, 1)}, volume_m3=${Fmt.num(l.volumeM3, 3)}, valor_nf=${Fmt.num(l.valorMercadoria, 2)})`]);
+        L.push(['observacao', `Taxado ${Fmt.kg(l.pesoTaxavelKg)} · frete-peso ${Fmt.moeda(v.fretePeso)} · ad valorem ${Fmt.moeda(v.adValorem)} · GRIS ${Fmt.moeda(v.gris)} · ${devidoTxt}`]);
+        break;
+      }
+      case 'SELETOR_SERVICO':
+        L.push(['acao', `seletor.adequar_servico(valor_fatura=${Fmt.num(l.valorCte, 2)}, peso_taxavel=${Fmt.num(l.pesoTaxavelKg, 1)})`]);
+        L.push(['observacao', `Melhor adequação: ${NOME_SERVICO[l.servicoInferido]} · contratado: ${NOME_SERVICO[l.servicoContratado] || 'Standard'} · ${devidoTxt} (ICMS aéreo 4%)`]);
+        break;
+      case 'COTACAO_SPOT':
+        L.push(['acao', `cotacoes.buscar(transportadora="${l.transportadora}", nf="${l.nf}")`]);
+        L.push(['observacao', l.cotacaoValor ? `Registro ${l.cotacaoId} (WhatsApp) de ${l.cotacaoData} · ${Fmt.moeda(l.cotacaoValor)} · ${l.cotacaoIcmsIncluso === false ? 'ICMS por fora' : 'ICMS incluso'} · ${devidoTxt}` : 'Nenhum registro de cotação encontrado para esta NF']);
+        break;
+      default:
+        L.push(['observacao', `Referência adotada: ${Fmt.moeda(l.valorPrevistoBi)} (Power BI)`]);
+    }
+    return L;
+  },
+
+  pensamento(l, a) {
+    switch (a.codigo) {
+      case 'ALIQUOTA_ICMS_DIVERGENTE': return `${a.detalhe}. ${a.valor > 0 ? `O destaque a maior encarece o frete em ${Fmt.moeda(a.valor)}.` : 'O total acordado não muda, mas o CT-e precisa ser substituído.'}`;
+      case 'ROTA_FORA_TABELA': return 'Sem rota na tabela não há base contratual. Bloqueio até Suprimentos validar a cotação.';
+      case 'COTACAO_AUSENTE': return 'Sem registro da negociação não há como provar o valor. Bloqueio até localizar a evidência.';
+      case 'BI_DIVERGENTE_REGRA': return `${a.detalhe}. Erro interno: corrigir a previsão no SAP/Power BI antes de liberar.`;
+      case 'VALOR_ABAIXO_ESPERADO': return `${a.detalhe}. Sem glosa; vale monitorar um CT-e complementar.`;
+      case 'DUPLICIDADE': case 'NF_NAO_LOCALIZADA_BI': return null;
+      default: return `${a.detalhe}. Excedente de ${Fmt.moeda(a.valor)}.`;
+    }
+  },
+
+  linhas(l, n, total) {
+    const L = [];
+    L.push(['nota', `NF ${l.nf} · ${l.transportadora} · ${MODALIDADES[l.modalidade].curto} · ${rotaTxt(l)} (${n}/${total})`]);
+    L.push(['pensamento', this.INTRO[l.modalidade](l)]);
+    L.push(['acao', `fatura.ler_cte(numero="${l.numeroCte || 'n/d'}") + powerbi.buscar_nf(nf="${l.nf}")`]);
+    L.push(['observacao', l.temBi
+      ? `Fatura ${Fmt.moeda(l.valorCte)} (ICMS ${l.aliquotaIcmsCte ?? 'n/d'}%, peso taxado ${Fmt.kg(l.pesoTaxadoCteKg)}) · Power BI ${Fmt.moeda(l.valorPrevistoBi)} (peso real ${Fmt.kg(l.pesoRealKg)}, ${Fmt.num(l.volumeM3, 3)} m³) · diferença ${Fmt.moedaSinal(l.diferenca)} (${Fmt.pctSinal(l.diferencaPct)})`
+      : `Fatura ${Fmt.moeda(l.valorCte)} · NF ${l.nf} não localizada no Power BI`]);
+    const dup = l.achados.find((a) => a.codigo === 'DUPLICIDADE');
+    if (dup) {
+      L.push(['acao', `indice.buscar_cte(transportadora="${l.transportadora}", numero="${l.numeroCte}")`]);
+      L.push(['observacao', dup.detalhe]);
+      L.push(['pensamento', 'O mesmo CT-e já foi cobrado. Duplicidade aparece na chave do documento, não na diferença de valor.']);
+    } else if (!l.temBi) {
+      L.push(['pensamento', 'Sem a nota na base interna não há peso, rota nem mercadoria para recalcular. Bloqueio até a Logística validar a NF.']);
+    } else {
+      L.push(...this.recalculo(l));
+    }
+    for (const a of l.achados) { const t = this.pensamento(l, a); if (t) L.push(['pensamento', t]); }
+    if (!l.achados.length) L.push(['pensamento', 'Fatura conforme a regra e o Power BI. Nada a glosar.']);
+    L.push(['acao', 'llm.emitir_parecer(schema="parecer_auditoria_v3") + defesa.redigir(para="Financeiro")']);
+    if (l.status === STATUS.APROVADO) L.push(['ok', `APROVADO · ${l.diagnostico} · liberar ${Fmt.moeda(l.valorCte)}`]);
+    else if (l.status === STATUS.CRITICA) L.push(['critica', `DIVERGÊNCIA CRÍTICA · ${l.diagnostico} · glosar ${Fmt.moeda(l.glosa)}${l.requerRevisaoHumana ? ' · revisão humana' : ''}`]);
+    else L.push(['analise', `EM ANÁLISE · ${l.diagnostico} · ${ACAO_LABEL[l.acaoRecomendada]}`]);
+    return L;
+  },
+};
+
+/* ---------- 14. Estado da aplicação: a única fonte da verdade da tela ---------- */
+// As três planilhas como chegaram (antes do cruzamento)
+const entradas = { fatura: null, bi: null, cotacoes: null, simulacao: false };
+
+const state = {
+  registros: [],        // CT-es já cruzados com o Power BI e as cotações
+  linhas: [],           // o que a tabela mostra: CT-es aguardando ou já auditados
+  cruzamento: null,     // estatísticas do cruzamento (Cruzamento.montar)
+  ultimaExecucao: null, // { em, duracaoMs, processadas, total, cancelada }
+  filtros: { busca: '', status: 'Todos', transp: 'Todas', modalidade: 'Todas' },
+  ordenacao: { chave: null, direcao: 1 },
+  pagina: 1,
+  porPagina: 25,
+};
+
+// CT-e ainda não auditado: já tem modalidade (cadastro de contratos) e diferença fatura × BI
+function comoAguardando(r) {
+  const contrato = Contratos.resolver(r);
+  const temBi = !!r.temBi && Number.isFinite(r.valorPrevistoBi);
+  const diferenca = temBi ? round2(r.valorCte - r.valorPrevistoBi) : null;
+  return {
+    ...r, modalidade: contrato.modalidade, modal: contrato.modal, temBi, diferenca,
+    diferencaPct: temBi && r.valorPrevistoBi > 0 ? diferenca / r.valorPrevistoBi : null,
+    tolerancia: AuditEngine.tolerancia(temBi ? r.valorPrevistoBi : r.valorCte),
+    devido: null, status: STATUS.AGUARDANDO, diagnostico: 'Aguardando o agente', achados: [], memoria: [], glosa: 0,
+  };
+}
+
+// Cotações de todas as origens: arquivo próprio primeiro, depois colunas embutidas em outras planilhas
+const cotacoesCarregadas = () => [...(entradas.cotacoes?.registros || []), ...(entradas.bi?.cotacoes || []), ...(entradas.fatura?.cotacoes || [])];
+const unicasPorNf = (lista) => [...new Map(lista.map((x) => [Cruzamento.chave(x.nf), x])).values()];
+
+/* ---------- 15. Componentes básicos ---------- */
+const Toast = {
+  mostrar(tipo, titulo, mensagem = '') {
+    const estilos = { sucesso: ['check-circle-2', 'text-ok'], erro: ['x-circle', 'text-bad'], aviso: ['alert-triangle', 'text-warn'], info: ['info', 'text-[#9AA2F0]'] };
+    const [ic, cor] = estilos[tipo] || estilos.info;
+    const el = document.createElement('div');
+    el.className = 'toast-in pointer-events-auto flex gap-3 rounded-lg border border-line bg-surface p-3.5 shadow-2xl';
+    el.setAttribute('role', tipo === 'erro' ? 'alert' : 'status');
+    el.innerHTML = `${icon(ic, 'mt-0.5 h-4 w-4 shrink-0 ' + cor)}<div class="min-w-0"><p class="text-sm font-medium">${escapeHTML(titulo)}</p>${mensagem ? `<p class="mt-0.5 text-xs leading-relaxed text-mute">${escapeHTML(mensagem)}</p>` : ''}</div>`;
+    $('#toasts').appendChild(el);
+    refreshIcons();
+    setTimeout(() => { el.classList.replace('toast-in', 'toast-out'); setTimeout(() => el.remove(), 220); }, 4500);
+  },
+};
+
+// Log técnico: só escreve dentro do próprio painel (a rolagem nunca afeta a página)
+const Terminal = {
+  el: null,
+  buffer: [],
+  seguirFim: true,
+  TAGS: { cmd: '$', sistema: 'sistema', ferramenta: 'ferramenta', regra: 'regras', nota: '▸ CT-e', pensamento: 'pensamento', acao: 'ação', observacao: 'observação', ok: '✔ conclusão', critica: '✖ conclusão', analise: '◷ conclusão', resumo: 'resumo', sucesso: '✔ pronto', aviso: '⚠ aviso', erro: '✖ erro' },
+  init() {
+    this.el = $('#terminal');
+    // Se a pessoa rolar para cima para ler, o log para de rolar sozinho
+    this.el.addEventListener('scroll', () => { this.seguirFim = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 40; });
+  },
+  limpar() { this.el.innerHTML = ''; this.buffer = []; this.seguirFim = true; },
+  ocioso(mensagem) {
+    this.limpar();
+    this.el.innerHTML = `<div class="flex h-full flex-col justify-center gap-2 text-mute"><p class="text-ink/90">auditor-ia pronto.</p><p>${escapeHTML(mensagem)}</p><p class="caret">$ </p></div>`;
+  },
+  escrever(tipo, texto) {
+    if (!this.buffer.length) this.el.innerHTML = '';
+    const hora = Fmt.hora();
+    const tag = this.TAGS[tipo] || tipo;
+    const div = document.createElement('div');
+    div.className = `log-line t-${tipo}`;
+    div.innerHTML = `<span class="log-time">${hora}</span><span class="log-tag">${escapeHTML(tag)}</span><span class="log-text">${escapeHTML(texto)}</span>`;
+    this.el.appendChild(div);
+    this.buffer.push(`[${hora}] ${tag.padEnd(12)} ${texto}`);
+    if (this.seguirFim) this.el.scrollTop = this.el.scrollHeight;
+  },
+};
+
+const Pipeline = {
+  ETAPAS: [
+    ['cruzamento', 'Cruzamento fatura × Power BI', 'Cada CT-e procura a sua nota pelo número da NF'],
+    ['modalidades', 'Classificação por regra comercial', 'Tabela, calculadora, seletor ou cotação spot'],
+    ['regras', 'Recálculo pela regra do contrato', 'Pesos, componentes, ICMS e duplicidade'],
+    ['agente', 'Parecer e defesa técnica (IA)', 'Raciocínio passo a passo e saída em JSON'],
+    ['relatorio', 'Relatório padronizado', 'Tabela, indicadores, gráficos, CSV e defesas'],
+  ],
+  estado: {},
+  detalhe: {},
+  reset() { this.estado = {}; this.detalhe = {}; this.render(); },
+  set(id, status, detalhe) { this.estado[id] = status; if (detalhe) this.detalhe[id] = detalhe; this.render(); },
+  render() {
+    const visual = { ok: ['check-circle-2', 'text-ok'], rodando: ['loader-2', 'animate-spin text-[#9AA2F0]'], aviso: ['alert-circle', 'text-warn'], parado: ['circle', 'text-[#3A3D45]'] };
+    $('#pipeline').innerHTML = this.ETAPAS.map(([id, titulo, sub], i) => {
+      const st = this.estado[id] || 'parado';
+      const [ic, cor] = visual[st];
+      return `<li class="flex items-start gap-3 rounded-md px-2 py-1.5 ${st === 'rodando' ? 'bg-accent/[0.08]' : ''}">
+        ${icon(ic, 'mt-0.5 h-4 w-4 shrink-0 ' + cor)}
+        <div class="min-w-0"><p class="text-sm ${st === 'parado' ? 'text-mute' : 'text-ink'}">${i + 1}. ${titulo}</p><p class="truncate text-xs text-mute">${escapeHTML(this.detalhe[id] || sub)}</p></div>
+      </li>`;
+    }).join('');
+    refreshIcons();
+  },
+};
+
+// Anima um número do valor atual até o alvo (easing cúbico)
+function animarNumero(el, alvo, formatar, duracao = 450) {
+  const inicio = Number(el.dataset.valor || 0);
+  cancelAnimationFrame(el._raf);
+  const t0 = performance.now();
+  const passo = (t) => {
+    const p = clamp((t - t0) / duracao, 0, 1);   // o carimbo do quadro pode vir antes de t0
+    const atual = inicio + (alvo - inicio) * (1 - Math.pow(1 - p, 3));
+    el.dataset.valor = String(atual);
+    el.textContent = formatar(atual);
+    if (p < 1) el._raf = requestAnimationFrame(passo);
+  };
+  el._raf = requestAnimationFrame(passo);
+}
+
+/* ---------- 16. Indicadores executivos ---------- */
+const KPIs = {
+  calcular(linhas) {
+    const auditadas = linhas.filter((l) => l.status !== STATUS.AGUARDANDO);
+    // Sem referência no BI (duplicidade ou NF ausente), o valor inteiro do CT-e conta como divergente
+    const semReferencia = (l) => l.achados.some((a) => a.codigo === 'DUPLICIDADE' || a.codigo === 'NF_NAO_LOCALIZADA_BI');
+    const divergentes = auditadas.filter((l) => semReferencia(l) || (l.diferenca !== null && Math.abs(l.diferenca) > l.tolerancia));
+    const cobrado = auditadas.reduce((s, l) => s + l.valorCte, 0);
+    const economia = auditadas.reduce((s, l) => s + (l.glosa || 0), 0);
+    return {
+      total: auditadas.length,
+      carregadas: linhas.length,
+      cruzados: linhas.filter((l) => l.temBi).length,
+      cobrado,
+      divergentes: divergentes.length,
+      valorDivergente: divergentes.reduce((s, l) => s + (semReferencia(l) ? l.valorCte : Math.abs(l.diferenca)), 0),
+      pctNotas: auditadas.length ? divergentes.length / auditadas.length : 0,
+      economia,
+      pctEconomia: cobrado ? economia / cobrado : 0,
+      retido: auditadas.filter((l) => l.status === STATUS.ANALISE).reduce((s, l) => s + l.valorCte, 0),
+      horas: auditadas.reduce((s, l) => s + (CONFIG.MINUTOS_MANUAIS[l.modalidade] || 6), 0) / 60,
+    };
+  },
+  render() {
+    const k = this.calcular(state.linhas);
+    const set = (id, txt) => { $(id).textContent = txt; };
+    if (!k.total) {
+      ['#kpi-notas', '#kpi-div', '#kpi-eco', '#kpi-horas'].forEach((id) => { $(id).textContent = '—'; $(id).dataset.valor = '0'; });
+      set('#kpi-notas-sub', k.carregadas ? `${pl(k.carregadas, 'CT-e cruzado', 'CT-es cruzados')}, aguardando o agente` : 'Carregue a fatura e o Power BI');
+      set('#kpi-div-sub', 'Valor cobrado na fatura × previsto no Power BI');
+      set('#kpi-eco-sub', 'Cobrado acima da tabela, calculadora ou cotação');
+      set('#kpi-horas-sub', '4 a 10 min por CT-e na conferência manual');
+      $('#kpi-div-bar').style.width = '0%';
+      return;
+    }
+    animarNumero($('#kpi-notas'), k.total, (v) => Fmt.num(Math.round(v), 0));
+    animarNumero($('#kpi-div'), k.valorDivergente, Fmt.moeda);
+    animarNumero($('#kpi-eco'), k.economia, Fmt.moeda);
+    animarNumero($('#kpi-horas'), k.horas, (v) => Fmt.num(v, 1) + ' h');
+    set('#kpi-notas-sub', `de ${pl(k.carregadas, 'CT-e', 'CT-es')} da fatura · ${k.cruzados} cruzados com o Power BI`);
+    set('#kpi-div-sub', `${pl(k.divergentes, 'CT-e', 'CT-es')} fora da tolerância (${Fmt.pct(k.pctNotas)} da fatura)`);
+    set('#kpi-eco-sub', `${Fmt.pct(k.pctEconomia)} do valor faturado · ${Fmt.moeda(k.retido)} retidos em análise`);
+    const exec = state.ultimaExecucao;
+    set('#kpi-horas-sub', `4 a 10 min por CT-e na conferência manual${exec ? ` · o agente levou ${Fmt.duracao(exec.duracaoMs)}` : ''}`);
+    $('#kpi-div-bar').style.width = Math.min(100, k.pctNotas * 100).toFixed(1) + '%';
+  },
+};
+
+/* ---------- 17. Cartões das regras comerciais ---------- */
+const ModalidadesUI = {
+  parametros(cod) {
+    if (cod === 'TABELA_ICMS') {
+      const c = CONTRATOS['Transportadora Alfa'];
+      return `${Object.keys(c.tabela).length} rotas × ${c.faixasKg.length} faixas até ${Fmt.num(c.faixasKg[c.faixasKg.length - 1] / 1000, 0)} t · ICMS 7% ou 12%`;
+    }
+    if (cod === 'CALCULADORA') {
+      return Contratos.doTipo(cod).map((n) => { const c = CONTRATOS[n]; return `${n.split(' ')[0]}: ${Fmt.moeda(c.tarifaKg)}/kg, ad valorem ${Fmt.num(c.adValoremPct, 2)}%, GRIS ${Fmt.num(c.grisPct, 2)}%`; }).join(' · ');
+    }
+    if (cod === 'SELETOR_SERVICO') return '4 serviços · cubagem aérea 167 kg/m³ · ICMS aéreo 4%';
+    if (cod === 'COTACAO_SPOT') return 'Cotação WhatsApp × previsto no Power BI × fatura';
+    return 'Referência: frete previsto no Power BI';
+  },
+  card(cod) {
+    const m = MODALIDADES[cod];
+    const linhas = state.linhas.filter((l) => l.modalidade === cod);
+    const transps = cod === 'REFERENCIA_BI' ? [...new Set(linhas.map((l) => l.transportadora))] : Contratos.doTipo(cod);
+    const auditadas = linhas.filter((l) => l.status !== STATUS.AGUARDANDO);
+    const comAchados = auditadas.filter((l) => l.status !== STATUS.APROVADO).length;
+    const glosa = auditadas.reduce((s, l) => s + l.glosa, 0);
+    const ativo = state.filtros.modalidade === cod;
+    return `<button type="button" data-modalidade="${cod}" aria-pressed="${ativo}" class="card flex flex-col p-4 text-left transition-colors hover:border-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 ${ativo ? 'border-white/40 bg-white/[0.05]' : ''}">
+      <span class="flex items-center gap-2.5">
+        <span class="grid h-7 w-7 shrink-0 place-items-center rounded-md" style="background:${m.cor}1F;color:${m.cor}">${icon(m.icone, 'h-4 w-4')}</span>
+        <span class="text-sm font-semibold leading-tight">${m.nome}</span>
+      </span>
+      <span class="mt-2 text-xs text-ink/80">${escapeHTML(transps.join(' · ') || '—')}</span>
+      <span class="mt-2 text-[13px] leading-snug text-mute">${m.resumo}</span>
+      <span class="mt-2 text-xs text-mute/90">${escapeHTML(this.parametros(cod))}</span>
+      <span class="mt-auto block pt-4">
+        <span class="grid grid-cols-3 gap-2 border-t border-line pt-3 text-xs">
+          <span><span class="block text-mute">CT-es</span><span class="tabular text-sm font-medium text-ink">${linhas.length}</span></span>
+          <span><span class="block text-mute">Com achados</span><span class="tabular text-sm font-medium ${comAchados ? 'text-[#F07A7A]' : 'text-ink'}">${auditadas.length ? comAchados : '—'}</span></span>
+          <span><span class="block text-mute">Glosa</span><span class="tabular text-sm font-medium ${glosa ? 'text-ok' : 'text-ink'}">${auditadas.length ? Fmt.moedaCompacta(glosa) : '—'}</span></span>
+        </span>
+      </span>
+    </button>`;
+  },
+  render() {
+    const presentes = new Set(state.linhas.map((l) => l.modalidade));
+    const lista = ORDEM_MODALIDADES.filter((m) => m !== 'REFERENCIA_BI' || presentes.has(m));
+    const grid = $('#modalidades-grid');
+    grid.className = `grid grid-cols-1 gap-3 sm:grid-cols-2 ${lista.length > 4 ? 'xl:grid-cols-5' : 'xl:grid-cols-4'}`;
+    grid.innerHTML = lista.map((cod) => this.card(cod)).join('');
+    $('#btn-todas-modalidades').classList.toggle('hidden', state.filtros.modalidade === 'Todas');
+    refreshIcons();
+  },
+};
+
+const corGrupo = (grupo) => (grupo === 'COMUM' ? GRUPO_COMUM.cor : MODALIDADES[grupo].cor);
+
+/* ---------- 18. Gráficos (Chart.js) ---------- */
+const Charts = {
+  barra: null,
+  erros: null,
+  meta: { rotulos: [], glosas: [] },
+  init() {
+    $('#legenda-grupos').innerHTML = [['COMUM', GRUPO_COMUM.curto], ...['TABELA_ICMS', 'CALCULADORA', 'SELETOR_SERVICO', 'COTACAO_SPOT'].map((m) => [m, MODALIDADES[m].curto])]
+      .map(([g, nome]) => `<span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-sm" style="background:${corGrupo(g)}"></span>${nome}</span>`).join('');
+    if (typeof window.Chart === 'undefined') {
+      $('#chart-bar-empty').textContent = 'Chart.js não carregou (verifique a conexão com o CDN).';
+      return;
+    }
+    const C = window.Chart;
+    C.defaults.font.family = 'Inter, ui-sans-serif, system-ui, sans-serif';
+    C.defaults.color = '#8A8F98';
+    C.defaults.borderColor = 'rgba(255,255,255,0.06)';
+    const tooltip = { backgroundColor: '#16171B', borderColor: '#2A2D35', borderWidth: 1, padding: 10, titleColor: '#EDEDEF', bodyColor: '#C9CCD3', footerColor: '#8A8F98', boxPadding: 4 };
+
+    this.barra = new C($('#chart-transportadoras'), {
+      type: 'bar',
+      data: { labels: [], datasets: [
+        { label: 'Previsto (Power BI)', data: [], backgroundColor: '#3A3E48', hoverBackgroundColor: '#4A4F5B', borderRadius: 5, maxBarThickness: 26 },
+        { label: 'Devido pela regra', data: [], backgroundColor: '#9CA3AF', hoverBackgroundColor: '#B4BAC4', borderRadius: 5, maxBarThickness: 26 },
+        { label: 'Cobrado (fatura)', data: [], backgroundColor: '#5E6AD2', hoverBackgroundColor: '#7C86E0', borderRadius: 5, maxBarThickness: 26 },
+      ] },
+      options: {
+        responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: { ...tooltip, callbacks: {
+            label: (c) => ` ${c.dataset.label}: ${Fmt.moeda(c.parsed.y)}`,
+            footer: (itens) => {
+              const cte = itens.find((i) => i.datasetIndex === 2)?.parsed.y || 0;
+              const devido = itens.find((i) => i.datasetIndex === 1 && !this.barra.data.datasets[1].hidden)?.parsed.y;
+              return devido ? `Excedente sobre a regra ${Fmt.moedaSinal(cte - devido)}` : '';
+            },
+          } },
+        },
+        scales: { x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: false, font: { size: 11 } } }, y: { beginAtZero: true, ticks: { callback: (v) => Fmt.moedaCompacta(v) } } },
+      },
+    });
+
+    this.erros = new C($('#chart-erros'), {
+      type: 'bar',
+      data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderRadius: 4, maxBarThickness: 16 }] },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { ...tooltip, callbacks: {
+            title: (it) => this.meta.rotulos[it[0].dataIndex],
+            label: (c) => ` ${c.parsed.x} ocorrência(s)`,
+            afterLabel: (c) => (this.meta.glosas[c.dataIndex] ? ` Glosa: ${Fmt.moeda(this.meta.glosas[c.dataIndex])}` : ''),
+          } },
+        },
+        scales: { x: { beginAtZero: true, ticks: { precision: 0 } }, y: { grid: { display: false }, ticks: { color: '#C9CCD3', font: { size: 11 } } } },
+      },
+    });
+  },
+
+  render() {
+    const auditou = state.linhas.some((l) => l.status !== STATUS.AGUARDANDO);
+    const porTransp = new Map();
+    for (const l of state.linhas) {
+      const t = porTransp.get(l.transportadora) || { bi: 0, cteComBi: 0, devido: 0, cte: 0 };
+      t.cte += l.valorCte;
+      if (l.temBi) { t.bi += l.valorPrevistoBi; t.cteComBi += l.valorCte; }
+      t.devido += l.status === STATUS.AGUARDANDO ? 0 : l.devido ?? l.valorCte;   // sem base: não presume excedente
+      porTransp.set(l.transportadora, t);
+    }
+    const lista = [...porTransp.entries()].sort((a, b) => b[1].cte - a[1].cte).slice(0, 10);
+    $('#chart-bar-empty').classList.toggle('hidden', lista.length > 0 && !!this.barra);
+    if (!lista.length) $('#chart-bar-insight').textContent = 'Carregue uma base para comparar.';
+    else if (auditou) {
+      const [nome, v] = [...lista].sort((a, b) => (b[1].cte - b[1].devido) - (a[1].cte - a[1].devido))[0];
+      const exc = v.cte - v.devido;
+      $('#chart-bar-insight').textContent = exc > 1 ? `Maior excedente: ${nome}, ${Fmt.moeda(exc)} acima do devido pela regra (${Fmt.pct(exc / v.devido)}).` : 'Nenhuma transportadora cobrou acima do devido pela regra.';
+    } else {
+      const comBi = lista.filter(([, v]) => v.bi > 0);
+      const [nome, v] = [...comBi].sort((a, b) => (b[1].cteComBi / b[1].bi) - (a[1].cteComBi / a[1].bi))[0] || [];
+      const desvio = v ? v.cteComBi / v.bi - 1 : 0;
+      $('#chart-bar-insight').textContent = desvio > 0.005 ? `${nome} fatura ${Fmt.pct(desvio)} acima do previsto no Power BI.` : 'Nenhuma transportadora fatura acima do previsto no Power BI.';
+    }
+
+    const contagem = {}, glosas = {};
+    for (const l of state.linhas) for (const a of l.achados) {
+      contagem[a.codigo] = (contagem[a.codigo] || 0) + 1;
+      if (ACHADOS[a.codigo].sev === 'critica') glosas[a.codigo] = (glosas[a.codigo] || 0) + a.valor;
+    }
+    const codigos = ORDEM_ACHADOS.filter((c) => contagem[c]).sort((a, b) => contagem[b] - contagem[a]);
+    const total = codigos.reduce((s, c) => s + contagem[c], 0);
+    $('#chart-erros-empty').classList.toggle('hidden', total > 0 && !!this.erros);
+    $('#chart-erros-insight').textContent = total
+      ? `${pl(total, 'achado', 'achados')} em ${pl(state.linhas.filter((l) => l.achados.length).length, 'CT-e', 'CT-es')}. Mais frequente: ${inicialMinuscula(ACHADOS[codigos[0]].rotulo)} (${contagem[codigos[0]]}).`
+      : 'Achados do agente por tipo; a cor indica a regra que encontrou o erro.';
+
+    if (!this.barra) return;
+    this.barra.data.labels = lista.map(([nome]) => nome);
+    this.barra.data.datasets[0].data = lista.map(([, v]) => round2(v.bi));
+    this.barra.data.datasets[1].data = lista.map(([, v]) => round2(v.devido));
+    this.barra.data.datasets[1].hidden = !auditou;
+    this.barra.data.datasets[2].data = lista.map(([, v]) => round2(v.cte));
+    this.barra.update();
+    this.meta = { rotulos: codigos.map((c) => ACHADOS[c].rotulo), glosas: codigos.map((c) => glosas[c] || 0) };
+    this.erros.data.labels = codigos.map((c) => ACHADOS[c].curto);
+    this.erros.data.datasets[0].data = codigos.map((c) => contagem[c]);
+    this.erros.data.datasets[0].backgroundColor = codigos.map((c) => corGrupo(ACHADOS[c].grupo));
+    this.erros.update();
+  },
+};
+
+/* ---------- 19. Card 1: as três fontes do cruzamento ---------- */
+const FontesUI = {
+  carregando: null,   // fonte que está sendo lida (efeito visual da simulação)
+  item(chave, estado, detalhe) {
+    const f = FONTES[chave];
+    const [ponto, cor, texto] = {
+      ok: ['bg-ok', 'text-ok', f.carregada],
+      vazio: ['bg-zinc-600', 'text-mute', 'aguardando'],
+      carregando: ['animate-pulse bg-[#9AA2F0]', 'text-[#9AA2F0]', 'lendo…'],
+    }[estado];
+    return `<li class="flex items-start gap-3 p-3">
+      <span class="grid h-8 w-8 shrink-0 place-items-center rounded-md ${estado === 'ok' ? 'bg-white/[0.06] text-ink/90' : 'bg-white/[0.03] text-mute'}">${icon(f.icone, 'h-4 w-4')}</span>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center justify-between gap-2">
+          <p class="truncate text-sm font-medium">${f.nome}</p>
+          <span class="inline-flex shrink-0 items-center gap-1.5 text-xs ${cor}"><span class="h-1.5 w-1.5 rounded-full ${ponto}"></span>${texto}</span>
+        </div>
+        <p class="mt-0.5 truncate text-xs text-mute" title="${escapeHTML(detalhe)}">${escapeHTML(detalhe)}</p>
+      </div>
+    </li>`;
+  },
+  render() {
+    const f = entradas.fatura, b = entradas.bi;
+    const estado = (fonte, chave) => (fonte ? 'ok' : this.carregando === chave ? 'carregando' : 'vazio');
+    const notas = b ? unicasPorNf(b.registros) : [];
+    const nCot = unicasPorNf(cotacoesCarregadas()).length;
+    const det = {
+      fatura: f ? `${pl(f.registros.length, 'CT-e', 'CT-es')} · ${pl(new Set(f.registros.map((x) => normTxt(x.transportadora))).size, 'transportadora', 'transportadoras')} · ${Fmt.moeda(somar(f.registros, 'valorCte'))} · ${f.nome}` : FONTES.fatura.descricao,
+      bi: b ? `${pl(notas.length, 'nota', 'notas')} · ${Fmt.moeda(somar(notas, 'valorPrevistoBi'))} em frete previsto · ${b.nome}` : FONTES.bi.descricao,
+      regras: `${pl(Object.keys(CONTRATOS).length, 'contrato', 'contratos')} em ${Contratos.qtdRegras()} regras · ${nCot ? pl(nCot, 'cotação WhatsApp', 'cotações WhatsApp') : 'nenhuma cotação carregada'}`,
+    };
+    $('#fontes-lista').innerHTML = this.item('fatura', estado(f, 'fatura'), det.fatura) + this.item('bi', estado(b, 'bi'), det.bi) + this.item('regras', 'ok', det.regras);
+    refreshIcons();
+  },
+};
+
+/* ---------- 20. Aba "Resumo da Auditoria": visão limpa para qualquer usuário ---------- */
+const Resumo = {
+  atual: null,   // CT-e que o agente está conferindo agora
+
+  vazio() {
+    const falta = !entradas.fatura && !entradas.bi ? 'a fatura e o relatório do Power BI' : !entradas.bi ? 'o relatório do Power BI' : 'a fatura da transportadora';
+    return `<div class="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+      ${icon('list-checks', 'h-7 w-7 text-mute')}
+      <p class="text-sm font-medium text-ink/90">Carregue ${falta} para começar</p>
+      <p class="max-w-sm text-sm leading-relaxed text-mute">Aqui aparece o andamento por transportadora e cada divergência no momento em que o agente a encontra.</p>
+    </div>`;
+  },
+
+  topo() {
+    const total = state.linhas.length;
+    const auditadas = state.linhas.filter((l) => l.status !== STATUS.AGUARDANDO);
+    const crit = auditadas.filter((l) => l.status === STATUS.CRITICA).length;
+    const anal = auditadas.filter((l) => l.status === STATUS.ANALISE).length;
+    const glosa = auditadas.reduce((s, l) => s + l.glosa, 0);
+    const ex = state.ultimaExecucao;
+    let ic, titulo, sub;
+    if (Agent.rodando) {
+      ic = icon('loader-2', 'h-4 w-4 animate-spin text-[#9AA2F0]');
+      titulo = this.atual ? `Conferindo NF ${this.atual.nf} · ${this.atual.transportadora}` : 'Preparando a auditoria';
+      sub = `${auditadas.length} de ${pl(total, 'CT-e', 'CT-es')} · ${pl(crit + anal, 'divergência', 'divergências')} até agora · ${Fmt.moeda(glosa)} a glosar`;
+    } else if (ex && !ex.cancelada) {
+      ic = icon('check-circle-2', 'h-4 w-4 text-ok');
+      titulo = `Auditoria concluída em ${Fmt.duracao(ex.duracaoMs)}`;
+      sub = `${pl(crit, 'divergência crítica', 'divergências críticas')} · ${anal} em análise · ${Fmt.moeda(glosa)} a glosar`;
+    } else if (ex) {
+      ic = icon('pause-circle', 'h-4 w-4 text-warn');
+      titulo = `Execução interrompida em ${ex.processadas} de ${pl(ex.total, 'CT-e', 'CT-es')}`;
+      sub = 'Execute o agente de novo para auditar todos.';
+    } else {
+      const c = state.cruzamento;
+      ic = icon('git-compare', 'h-4 w-4 text-[#9AA2F0]');
+      titulo = `Pronto para auditar ${pl(total, 'CT-e', 'CT-es')}`;
+      sub = `Fatura × Power BI: ${c.cruzados} de ${c.ctes} cruzados pela NF`
+        + (c.semBi ? ` · ${c.semBi} sem NF no BI` : '')
+        + (c.semCobranca ? ` · ${pl(c.semCobranca, 'nota do BI ainda sem cobrança', 'notas do BI ainda sem cobrança')}` : '') + '.';
+    }
+    return `<div class="flex items-start gap-3 rounded-lg border border-line bg-base/60 p-3">
+      <span class="mt-0.5 shrink-0">${ic}</span>
+      <div class="min-w-0"><p class="truncate text-sm font-medium text-ink">${escapeHTML(titulo)}</p><p class="mt-0.5 text-xs leading-relaxed text-mute">${escapeHTML(sub)}</p></div>
+    </div>`;
+  },
+
+  grupos() {
+    const mapa = new Map();
+    for (const l of state.linhas) {
+      const g = mapa.get(l.transportadora) || { nome: l.transportadora, modalidade: l.modalidade, total: 0, feitas: 0, div: 0, glosa: 0 };
+      g.total++;
+      if (l.status !== STATUS.AGUARDANDO) { g.feitas++; if (l.status !== STATUS.APROVADO) g.div++; g.glosa += l.glosa; }
+      mapa.set(l.transportadora, g);
+    }
+    return [...mapa.values()].sort((a, b) => ORDEM_MODALIDADES.indexOf(a.modalidade) - ORDEM_MODALIDADES.indexOf(b.modalidade) || a.nome.localeCompare(b.nome, 'pt-BR'));
+  },
+
+  transportadoras() {
+    return this.grupos().map((g) => {
+      const m = MODALIDADES[g.modalidade];
+      const pct = g.total ? (g.feitas / g.total) * 100 : 0;
+      return `<li class="grid grid-cols-12 items-center gap-x-3 gap-y-1.5 py-2.5">
+        <div class="col-span-12 min-w-0 sm:col-span-5">
+          <p class="truncate text-sm font-medium text-ink/90">${escapeHTML(g.nome)}</p>
+          <p class="mt-0.5 flex items-center gap-1.5 text-xs text-mute"><span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background:${m.cor}"></span>${m.curto}</p>
+        </div>
+        <div class="col-span-7 sm:col-span-4">
+          <div class="h-1.5 overflow-hidden rounded-full bg-white/[0.06]"><div class="h-full rounded-full transition-[width] duration-300" style="width:${pct.toFixed(1)}%;background:${m.cor}"></div></div>
+          <p class="tabular mt-1 text-xs text-mute">${g.feitas} de ${g.total} conferidos</p>
+        </div>
+        <div class="col-span-5 text-right sm:col-span-3">
+          <p class="tabular text-sm ${g.div ? 'text-[#F07A7A]' : 'text-ink/90'}">${g.feitas ? pl(g.div, 'divergência', 'divergências') : '—'}</p>
+          <p class="tabular text-xs ${g.glosa ? 'text-ok' : 'text-mute'}">${g.glosa ? Fmt.moeda(g.glosa) + ' a glosar' : g.feitas ? 'nada a glosar' : 'aguardando'}</p>
+        </div>
+      </li>`;
+    }).join('');
+  },
+
+  item(l) {
+    const critica = l.status === STATUS.CRITICA;
+    const direita = l.glosa > 0
+      ? `<span class="tabular block text-sm text-ok">${Fmt.moeda(l.glosa)}</span><span class="block text-[11px] text-mute">${ACAO_CURTO[l.acaoRecomendada]}</span>`
+      : `<span class="block text-xs font-medium ${critica ? 'text-[#F07A7A]' : 'text-warn'}">${ACAO_CURTO[l.acaoRecomendada]}</span>`;
+    return `<li><button type="button" data-abrir="${l.id}" class="flex w-full items-start gap-3 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-white/[0.04] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
+      <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full ${critica ? 'bg-bad' : 'bg-warn'}"></span>
+      <span class="min-w-0 flex-1"><span class="block truncate text-sm text-ink/90">${escapeHTML(l.diagnostico)}</span><span class="block truncate text-xs text-mute">NF ${escapeHTML(l.nf)} · ${escapeHTML(l.transportadora)} · ${MODALIDADES[l.modalidade].curto}</span></span>
+      <span class="shrink-0 text-right">${direita}</span>
+    </button></li>`;
+  },
+
+  divergencias() {
+    const rank = (s) => (s === STATUS.CRITICA ? 0 : 1);
+    let lista = state.linhas.filter((l) => l.status === STATUS.CRITICA || l.status === STATUS.ANALISE);
+    // Durante a execução: mais recentes primeiro. Depois: maiores glosas primeiro.
+    lista = Agent.rodando ? lista.reverse() : lista.sort((a, b) => rank(a.status) - rank(b.status) || b.glosa - a.glosa);
+    if (lista.length) return lista.map((l) => this.item(l)).join('');
+    const msg = Agent.rodando ? 'Nenhuma divergência até agora.' : state.ultimaExecucao ? 'Nenhuma divergência: todos os CT-es conferem com a regra.' : 'Execute o agente para listar as divergências.';
+    return `<li data-vazio class="px-2.5 py-6 text-center text-sm text-mute">${msg}</li>`;
+  },
+
+  render() {
+    const el = $('#painel-resumo');
+    if (!state.linhas.length) { el.innerHTML = this.vazio(); refreshIcons(); return; }
+    const grupos = this.grupos();
+    const nDiv = state.linhas.filter((l) => l.status === STATUS.CRITICA || l.status === STATUS.ANALISE).length;
+    const dica = !nDiv ? '' : Agent.rodando ? 'mais recentes primeiro' : 'maiores glosas primeiro';
+    el.innerHTML = `
+      <div id="resumo-topo">${this.topo()}</div>
+      <section class="mt-5">
+        <div class="flex items-baseline justify-between gap-3">
+          <h3 class="text-xs font-medium text-mute">Andamento por transportadora</h3>
+          <span class="text-xs text-mute">${pl(grupos.length, 'transportadora', 'transportadoras')} · ${pl(new Set(grupos.map((g) => g.modalidade)).size, 'regra', 'regras')}</span>
+        </div>
+        <ul id="resumo-transp" class="mt-1 divide-y divide-line/70">${this.transportadoras()}</ul>
+      </section>
+      <section class="mt-5">
+        <div class="flex items-baseline justify-between gap-3">
+          <h3 class="text-xs font-medium text-mute">Divergências encontradas <span id="resumo-div-n" class="tabular text-ink/80">${nDiv}</span></h3>
+          <span id="resumo-div-dica" class="text-xs text-mute">${dica}</span>
+        </div>
+        <ul id="resumo-divs" class="mt-1 space-y-0.5">${this.divergencias()}</ul>
+      </section>`;
+    refreshIcons();
+  },
+
+  atualizarTopo() { const t = $('#resumo-topo'); if (t) { t.innerHTML = this.topo(); refreshIcons(); } },
+
+  // Chamado quando o agente termina um CT-e: atualiza só o que mudou
+  registrar(l) {
+    if (!$('#resumo-topo')) { this.render(); return; }
+    this.atualizarTopo();
+    $('#resumo-transp').innerHTML = this.transportadoras();
+    if (l.status === STATUS.CRITICA || l.status === STATUS.ANALISE) {
+      const ul = $('#resumo-divs');
+      ul.querySelector('[data-vazio]')?.remove();
+      ul.insertAdjacentHTML('afterbegin', this.item(l));
+      $('#resumo-div-n').textContent = ul.querySelectorAll('[data-abrir]').length;
+      $('#resumo-div-dica').textContent = 'mais recentes primeiro';
+    }
+    refreshIcons();
+  },
+};
+
+/* ---------- 21. Abas do card 2 ---------- */
+const Abas = {
+  atual: 'resumo',
+  ativar(nome, focar = false) {
+    this.atual = nome;
+    const resumo = nome === 'resumo';
+    for (const [id, ativa] of [['#tab-resumo', resumo], ['#tab-log', !resumo]]) {
+      const t = $(id);
+      t.setAttribute('aria-selected', String(ativa));
+      t.tabIndex = ativa ? 0 : -1;
+      t.classList.toggle('tab-on', ativa);
+    }
+    $('#painel-resumo').classList.toggle('hidden', !resumo);
+    $('#terminal').classList.toggle('hidden', resumo);
+    $('#acoes-log').classList.toggle('hidden', resumo);
+    $('#acoes-log').classList.toggle('flex', !resumo);
+    // O log continuou sendo escrito escondido: ao abrir, vai para a última linha
+    if (!resumo && Terminal.seguirFim) Terminal.el.scrollTop = Terminal.el.scrollHeight;
+    if (focar) $(resumo ? '#tab-resumo' : '#tab-log').focus();
+  },
+};
+
+/* ---------- 22. Badges ---------- */
+const BADGE = {
+  [STATUS.APROVADO]: ['bg-ok/10 text-ok ring-ok/25', 'check-circle-2'],
+  [STATUS.CRITICA]: ['bg-bad/10 text-[#F07A7A] ring-bad/30', 'alert-octagon'],
+  [STATUS.ANALISE]: ['bg-warn/10 text-warn ring-warn/25', 'clock'],
+  [STATUS.AGUARDANDO]: ['bg-white/[0.04] text-mute ring-line', 'more-horizontal'],
+};
+const badge = (status) => { const [cls, ic] = BADGE[status]; return `<span class="badge ${cls}">${icon(ic, 'h-3 w-3')}${status}</span>`; };
+const badgeModalidade = (cod) => {
+  const m = MODALIDADES[cod];
+  return `<span class="badge" style="color:${m.cor};background:${m.cor}1A;box-shadow:inset 0 0 0 1px ${m.cor}40" title="${m.nome}">${icon(m.icone, 'h-3 w-3')}${m.curto}</span>`;
+};
+
+/* ---------- 23. Tabela: filtros, ordenação e paginação ---------- */
+const Table = {
+  ORDENAVEIS: {
+    nf: (l) => Number(l.nf) || 0, transportadora: (l) => normTxt(l.transportadora), modalidade: (l) => ORDEM_MODALIDADES.indexOf(l.modalidade),
+    valorCte: (l) => l.valorCte, valorPrevistoBi: (l) => l.valorPrevistoBi ?? -1, devido: (l) => l.devido ?? -1,
+    diferenca: (l) => l.diferenca ?? -1e12,
+    status: (l) => [STATUS.CRITICA, STATUS.ANALISE, STATUS.APROVADO, STATUS.AGUARDANDO].indexOf(l.status),
+  },
+
+  // Filtros e ordenação não alteram os dados: geram uma "visão" derivada do estado
+  filtradas() {
+    const f = state.filtros;
+    const q = normTxt(f.busca);
+    let rows = state.linhas.filter((l) =>
+      (f.status === 'Todos' || l.status === f.status) &&
+      (f.transp === 'Todas' || l.transportadora === f.transp) &&
+      (f.modalidade === 'Todas' || l.modalidade === f.modalidade) &&
+      (!q || l.nf.includes(q) || normTxt(l.numeroCte).includes(q) || normTxt(l.fatura).includes(q) || normTxt(l.transportadora).includes(q)));
+    const { chave, direcao } = state.ordenacao;
+    if (chave) {
+      const valor = this.ORDENAVEIS[chave];
+      rows = [...rows].sort((a, b) => { const va = valor(a), vb = valor(b); return (va > vb ? 1 : va < vb ? -1 : 0) * direcao; });
+    }
+    return rows;
+  },
+
+  // Toda linha tem exatamente duas linhas de texto (valor + detalhe) e nenhuma célula quebra:
+  // a altura da linha é a mesma antes, durante e depois da auditoria.
+  linhaHTML(l) {
+    const aguardando = l.status === STATUS.AGUARDANDO;
+    const sub = 'truncate text-xs text-mute';
+    const previsto = l.temBi ? Fmt.moeda(l.valorPrevistoBi) : '<span class="text-xs text-warn" title="NF não localizada no relatório do Power BI">sem NF no BI</span>';
+    const corDif = l.diferenca === null || Math.abs(l.diferenca) <= l.tolerancia ? 'text-mute' : l.diferenca > 0 ? 'text-[#F07A7A]' : 'text-[#5AB0F0]';
+    const dif = l.diferenca === null ? '<div>—</div>' : `<div class="truncate">${Fmt.moedaSinal(l.diferenca)}</div><div class="truncate text-xs opacity-70">${Fmt.pctSinal(l.diferencaPct)}</div>`;
+    const devido = aguardando ? '<div class="text-mute">—</div>'
+      : l.devido === null ? '<div class="truncate text-xs text-warn" title="Sem base para recalcular">sem base</div>'
+      : `<div class="truncate">${Fmt.moeda(l.devido)}</div>`;
+    const glosa = l.glosa > 0 ? `<div class="truncate text-xs text-ok" title="Glosa recomendada">glosa ${Fmt.moeda(l.glosa)}</div>` : '';
+    const corCte = !aguardando && l.devido !== null && l.valorCte - l.devido > AuditEngine.tolerancia(l.devido) ? 'text-[#F07A7A]' : 'text-ink/90';
+    const icDiag = aguardando ? '' : icon(l.categoriaPrincipal === 'APROVADO' ? 'check' : ACHADOS[l.categoriaPrincipal].icone, 'mt-0.5 h-3.5 w-3.5 shrink-0 text-mute');
+    return `<tr data-id="${l.id}" tabindex="0" class="cursor-pointer border-b border-line/70 transition-colors hover:bg-white/[0.025] focus:bg-white/[0.04] focus:outline-none">
+      <td class="px-3 py-3"><div class="tabular truncate font-medium">${escapeHTML(l.nf)}</div><div class="${sub}">CT-e ${escapeHTML(l.numeroCte || 'n/d')} · ${escapeHTML(rotaTxt(l))}</div></td>
+      <td class="px-3 py-3"><div class="truncate text-ink/90">${escapeHTML(l.transportadora)}</div>${l.fatura ? `<div class="${sub}">${escapeHTML(l.fatura)}</div>` : ''}</td>
+      <td class="px-3 py-3">${badgeModalidade(l.modalidade)}</td>
+      <td class="tabular px-3 py-3 text-right ${corCte}"><div class="truncate">${Fmt.moeda(l.valorCte)}</div></td>
+      <td class="tabular px-3 py-3 text-right text-ink/90"><div class="truncate">${previsto}</div></td>
+      <td class="tabular px-3 py-3 text-right text-ink/90">${devido}${glosa}</td>
+      <td class="tabular px-3 py-3 text-right ${corDif}">${dif}</td>
+      <td class="px-3 py-3"><div class="flex items-start gap-2 text-[13px] leading-[18px] ${aguardando ? 'italic text-mute' : 'text-ink/90'}" title="${escapeHTML(l.diagnostico)}">${icDiag}<span class="line-clamp-2 min-w-0">${escapeHTML(l.diagnostico)}</span></div></td>
+      <td class="px-3 py-3">${badge(l.status)}</td>
+    </tr>`;
+  },
+
+  render() {
+    const rows = this.filtradas();
+    const paginas = Math.max(1, Math.ceil(rows.length / state.porPagina));
+    state.pagina = clamp(state.pagina, 1, paginas);
+    const ini = (state.pagina - 1) * state.porPagina;
+    const pagina = rows.slice(ini, ini + state.porPagina);
+    $('#tabela-body').innerHTML = pagina.map((l) => this.linhaHTML(l)).join('');
+    $('#tabela-vazia').classList.toggle('hidden', pagina.length > 0);
+    $('#tabela-vazia-txt').textContent = state.linhas.length
+      ? 'Nenhum CT-e corresponde aos filtros. Limpe a busca ou escolha outra regra ou status.'
+      : 'Nenhum CT-e carregado. Use a base simulada ou envie a fatura e o relatório do Power BI.';
+    $('#tabela-info').textContent = rows.length ? `Mostrando ${ini + 1}–${ini + pagina.length} de ${pl(rows.length, 'CT-e', 'CT-es')}` : '0 CT-es';
+    $('#pagina-info').textContent = `${state.pagina} de ${paginas}`;
+    $('#btn-prev').disabled = state.pagina <= 1;
+    $('#btn-next').disabled = state.pagina >= paginas;
+    document.querySelectorAll('[data-ind]').forEach((el) => {
+      el.textContent = el.dataset.ind === state.ordenacao.chave ? (state.ordenacao.direcao === 1 ? '↑' : '↓') : '';
+    });
+    this.renderChips();
+    refreshIcons();
+  },
+
+  // Durante a execução, só a linha recém-auditada é trocada (sem redesenhar a tabela)
+  atualizarLinha(l) {
+    const tr = document.querySelector(`tr[data-id="${l.id}"]`);
+    if (!tr) return;
+    tr.outerHTML = this.linhaHTML(l);
+    document.querySelector(`tr[data-id="${l.id}"]`)?.classList.add('row-flash');
+    refreshIcons();
+  },
+
+  renderChips() {
+    const cont = { Todos: state.linhas.length };
+    for (const s of Object.values(STATUS)) cont[s] = state.linhas.filter((l) => l.status === s).length;
+    const opcoes = ['Todos', STATUS.APROVADO, STATUS.CRITICA, STATUS.ANALISE, STATUS.AGUARDANDO].filter((s) => s === 'Todos' || cont[s] || state.filtros.status === s);
+    $('#status-chips').innerHTML = opcoes.map((s) =>
+      `<button data-status="${s}" aria-pressed="${state.filtros.status === s}" class="chip ${state.filtros.status === s ? 'chip-on' : ''}">${s}<span class="tabular opacity-60">${cont[s]}</span></button>`).join('');
+  },
+
+  renderSelects() {
+    const transps = [...new Set(state.linhas.map((l) => l.transportadora))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    if (!transps.includes(state.filtros.transp)) state.filtros.transp = 'Todas';
+    const mods = ORDEM_MODALIDADES.filter((m) => state.linhas.some((l) => l.modalidade === m));
+    if (!mods.includes(state.filtros.modalidade)) state.filtros.modalidade = 'Todas';
+    const opt = (valor, rotulo, sel) => `<option value="${escapeHTML(valor)}" ${valor === sel ? 'selected' : ''}>${escapeHTML(rotulo)}</option>`;
+    $('#sel-transp').innerHTML = opt('Todas', 'Todas as transportadoras', state.filtros.transp) + transps.map((t) => opt(t, t, state.filtros.transp)).join('');
+    $('#sel-modalidade').innerHTML = opt('Todas', 'Todas as regras', state.filtros.modalidade) + mods.map((m) => opt(m, MODALIDADES[m].curto, state.filtros.modalidade)).join('');
+  },
+};
+
+/* ---------- 24. Painel lateral: cruzamento das fontes, memória de cálculo e defesa ---------- */
+const Drawer = {
+  aberto: false,
+  atual: null,
+  campo: (rotulo, valor, destaque = '') => `<div class="rounded-lg border border-line bg-surface/60 p-3"><dt class="text-xs text-mute">${rotulo}</dt><dd class="tabular mt-1 font-medium ${destaque}">${valor}</dd></div>`,
+  par: (rotulo, valor, destaque = '') => `<div class="flex items-baseline justify-between gap-3 py-1"><span class="text-xs text-mute">${rotulo}</span><span class="tabular text-right text-[13px] ${destaque || 'text-ink/90'}">${valor}</span></div>`,
+
+  fontesHTML(l, auditada) {
+    const p = this.par;
+    const temComp = l.fretePesoCte || l.adValoremCte || l.grisCte;
+    const fatura = [
+      p('CT-e', escapeHTML(l.numeroCte || 'n/d')),
+      l.fatura ? p('Fatura', escapeHTML(l.fatura)) : '',
+      p('Valor cobrado', Fmt.moeda(l.valorCte)),
+      p('Peso taxado', l.pesoTaxadoCteKg ? Fmt.kg(l.pesoTaxadoCteKg) : '—'),
+      p('ICMS destacado', Number.isFinite(l.aliquotaIcmsCte) ? Fmt.num(l.aliquotaIcmsCte, 0) + '%' : '—'),
+      temComp ? p('Frete-peso', Fmt.moeda(l.fretePesoCte)) + p('Ad valorem', Fmt.moeda(l.adValoremCte)) + p('GRIS', Fmt.moeda(l.grisCte)) : '',
+      l.servicoCte ? p('Serviço faturado', NOME_SERVICO[l.servicoCte]) : '',
+    ].join('');
+    const bi = l.temBi ? [
+      p('NF', escapeHTML(l.nf)),
+      p('Rota', escapeHTML(rotaTxt(l))),
+      p('Peso real', Fmt.kg(l.pesoRealKg)),
+      p('Volume', Fmt.num(l.volumeM3, 3) + ' m³'),
+      p('Mercadoria', Fmt.moeda(l.valorMercadoria)),
+      p('Frete previsto', Fmt.moeda(l.valorPrevistoBi)),
+      l.servicoContratado ? p('Serviço contratado', NOME_SERVICO[l.servicoContratado]) : '',
+    ].join('') : `<p class="py-1 text-[13px] leading-snug text-warn">NF ${escapeHTML(l.nf)} não localizada no relatório.</p>`;
+    const regra = [
+      p('Regra', MODALIDADES[l.modalidade].curto),
+      l.modalidade === 'COTACAO_SPOT' ? p('Cotação', l.cotacaoValor ? `${escapeHTML(l.cotacaoId || 's/ID')} · ${Fmt.moeda(l.cotacaoValor)}` : 'não registrada', l.cotacaoValor ? '' : 'text-warn') : '',
+      auditada ? p('Devido', l.devido === null ? 'sem base' : Fmt.moeda(l.devido), l.devido === null ? 'text-warn' : '') : p('Devido', 'aguardando o agente', 'text-mute'),
+      auditada && l.faixaCorreta ? p('Faixa correta', l.faixaCorreta) : '',
+      auditada && l.servicoInferido ? p('Tarifa da fatura', NOME_SERVICO[l.servicoInferido]) : '',
+      auditada ? p('Glosa', Fmt.moeda(l.glosa), l.glosa ? 'text-ok' : '') : '',
+    ].join('');
+    const bloco = (ic, titulo, corpo) => `<div class="rounded-lg border border-line bg-surface/60 p-3"><p class="mb-1 flex items-center gap-2 text-xs font-medium text-mute">${icon(ic, 'h-3.5 w-3.5')}${titulo}</p>${corpo}</div>`;
+    return `<div class="grid grid-cols-1 gap-2 sm:grid-cols-3">${bloco(FONTES.fatura.icone, 'Fatura', fatura)}${bloco(FONTES.bi.icone, 'Power BI', bi)}${bloco(FONTES.regras.icone, 'Regra comercial', regra)}</div>`;
+  },
+
+  memoriaHTML(l) {
+    return `<div class="scroll-thin overflow-x-auto rounded-lg border border-line"><table class="w-full text-[13px]">
+      <thead><tr class="border-b border-line bg-white/[0.02] text-xs text-mute"><th class="px-3 py-2 text-left font-medium">Item e regra</th><th class="px-3 py-2 text-right font-medium">Referência</th><th class="px-3 py-2 text-right font-medium">Na fatura</th></tr></thead>
+      <tbody>${l.memoria.map((m) => `<tr class="border-b border-line/60 last:border-0 ${m.total ? 'bg-white/[0.03] font-medium' : ''}">
+        <td class="px-3 py-2 align-top"><div class="text-ink/90">${escapeHTML(m.item)}</div>${m.regra ? `<div class="mt-0.5 text-xs text-mute">${escapeHTML(m.regra)}</div>` : ''}</td>
+        <td class="tabular whitespace-nowrap px-3 py-2 text-right align-top text-ink/90">${escapeHTML(m.ref || '')}</td>
+        <td class="tabular whitespace-nowrap px-3 py-2 text-right align-top ${m.alerta ? 'text-[#F07A7A]' : 'text-ink/90'}">${escapeHTML(m.cte || '')}</td>
+      </tr>`).join('')}</tbody></table></div>`;
+  },
+
+  abrir(id) {
+    const l = state.linhas.find((x) => x.id === id);
+    if (!l) return;
+    this.atual = l;
+    const auditada = l.status !== STATUS.AGUARDANDO;
+    const c = this.campo;
+    $('#drawer-title').textContent = `NF ${l.nf}`;
+    $('#drawer-sub').textContent = `${l.transportadora} · CT-e ${l.numeroCte || 'n/d'}${l.fatura ? ` · fatura ${l.fatura}` : ''} · ${rotaTxt(l)} · emitido em ${Fmt.dataBR(l.dataEmissao)}`;
+    const parecer = auditada ? Parecer.gerar(l) : null;
+    this.defesaAtual = auditada ? parecer.defesa_tecnica : '';
+    this.jsonAtual = auditada ? JSON.stringify(parecer, null, 2) : '';
+
+    $('#drawer-body').innerHTML = `
+      <div class="flex flex-wrap items-center gap-2">${badge(l.status)}${badgeModalidade(l.modalidade)}<span class="text-ink/90">${escapeHTML(l.diagnostico)}</span></div>
+      ${auditada ? `<p class="leading-relaxed text-ink/90">${escapeHTML(Defesa.fato(l))}</p>` : `<p class="text-mute">Este CT-e ainda não passou pelo agente. Execute o agente para recalcular o frete pela regra "${MODALIDADES[l.modalidade].nome}" e gerar a defesa técnica.</p>`}
+      <section><h4 class="label mb-2">Cruzamento das fontes</h4>${this.fontesHTML(l, auditada)}</section>
+      ${auditada ? `
+      <section><h4 class="label mb-2">Resultado</h4><dl class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        ${c('Valor a glosar', Fmt.moeda(l.glosa), l.glosa > 0 ? 'text-ok' : '')}
+        ${c('Valor a pagar', Fmt.moeda(l.valorAPagar))}
+        ${c('Ação recomendada', ACAO_LABEL[l.acaoRecomendada])}
+      </dl></section>
+      <section><h4 class="label mb-2">Memória de cálculo · ${escapeHTML(MODALIDADES[l.modalidade].nome)}</h4>${this.memoriaHTML(l)}</section>
+      <section><h4 class="label mb-2">Achados do motor de regras</h4>
+        ${l.achados.length ? `<ul class="space-y-2">${l.achados.map((a) => `<li class="flex gap-3 rounded-lg border border-line p-3"><span class="mt-1.5 h-2 w-2 shrink-0 rounded-full" style="background:${corGrupo(ACHADOS[a.codigo].grupo)}"></span><div class="min-w-0 flex-1"><p class="font-medium">${ACHADOS[a.codigo].rotulo}</p><p class="text-xs text-mute">${escapeHTML(a.detalhe)}</p></div>${a.valor ? `<span class="tabular text-sm text-ok">${Fmt.moeda(a.valor)}</span>` : ''}</li>`).join('')}</ul>` : '<p class="text-mute">Nenhum achado: a fatura confere com o Power BI e com a regra.</p>'}
+      </section>
+      <section>
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h4 class="label">Defesa técnica para o Financeiro</h4>
+          <div class="flex gap-2">
+            <button data-copiar-defesa class="btn btn-ghost px-2 py-1 text-xs">${icon('copy', 'h-3.5 w-3.5')}Copiar</button>
+            <button data-baixar-defesa class="btn btn-ghost px-2 py-1 text-xs">${icon('download', 'h-3.5 w-3.5')}Baixar .txt</button>
+          </div>
+        </div>
+        <div class="scroll-thin max-h-[440px] overflow-y-auto whitespace-pre-wrap rounded-lg border border-line bg-surface/60 p-4 text-[13px] leading-relaxed text-ink/90">${escapeHTML(this.defesaAtual)}</div>
+      </section>
+      <details class="rounded-lg border border-line">
+        <summary class="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 text-xs font-medium text-mute hover:text-ink">Parecer estruturado (JSON do agente)${icon('chevron-down', 'h-4 w-4')}</summary>
+        <div class="border-t border-line p-3">
+          <button data-copiar-json class="btn btn-ghost mb-2 px-2 py-1 text-xs">${icon('copy', 'h-3.5 w-3.5')}Copiar JSON</button>
+          <pre class="scroll-thin overflow-x-auto rounded-lg bg-[#07080A] p-3 font-mono text-[11.5px] leading-relaxed text-[#C9CCD3]">${escapeHTML(this.jsonAtual)}</pre>
+        </div>
+      </details>` : ''}`;
+    this.ultimoFoco = document.activeElement;
+    $('#drawer').classList.remove('hidden');
+    requestAnimationFrame(() => {
+      $('#drawer-backdrop').classList.replace('opacity-0', 'opacity-100');
+      $('#drawer-panel').classList.replace('translate-x-full', 'translate-x-0');
+      $('#btn-fechar-drawer').focus();
+    });
+    this.aberto = true;
+    refreshIcons();
+  },
+
+  fechar() {
+    if (!this.aberto) return;
+    this.aberto = false;
+    $('#drawer-backdrop').classList.replace('opacity-100', 'opacity-0');
+    $('#drawer-panel').classList.replace('translate-x-0', 'translate-x-full');
+    setTimeout(() => $('#drawer').classList.add('hidden'), 300);
+    this.ultimoFoco?.focus?.();
+  },
+};
+
+async function copiarTexto(texto, rotulo) {
+  try { await navigator.clipboard.writeText(texto); Toast.mostrar('sucesso', `${rotulo} copiado`); }
+  catch { Toast.mostrar('erro', 'Não foi possível copiar', 'O navegador bloqueou a área de transferência nesta página.'); }
+}
+
+/* ---------- 25. Orquestração da tela ---------- */
+const UI = {
+  renderTudo() {
+    KPIs.render();
+    Table.renderSelects();
+    Table.render();
+    ModalidadesUI.render();
+    Charts.render();
+    FontesUI.render();
+    Resumo.render();
+    this.renderHero();
+    this.renderBotoes();
+  },
+
+  renderHero() {
+    const c = state.cruzamento;
+    $('#hero-base').textContent = c ? `${pl(c.ctes, 'CT-e', 'CT-es')} · ${entradas.simulacao ? 'simulação' : 'CSV'}` : entradas.fatura || entradas.bi ? 'Cruzamento incompleto' : 'Nenhuma carregada';
+    const ex = state.ultimaExecucao;
+    $('#hero-exec').textContent = ex ? `${Fmt.hora(ex.em)} · ${Fmt.duracao(ex.duracaoMs)}${ex.cancelada ? ' (interrompida)' : ''}` : 'Ainda não executado';
+  },
+
+  renderBotoes() {
+    const tem = state.registros.length > 0;
+    const rodando = Agent.rodando;
+    const auditou = state.linhas.some((l) => l.status !== STATUS.AGUARDANDO);
+    const algumaFonte = !!(entradas.fatura || entradas.bi);
+    const parcial = algumaFonte && !tem;
+    $('#btn-carregar').disabled = rodando;
+    $('#btn-enviar').disabled = rodando;
+    $('#input-csv').disabled = rodando;
+    $('#btn-limpar').disabled = rodando || !(algumaFonte || entradas.cotacoes);
+    $('#btn-executar').disabled = rodando || !tem;
+    $('#btn-parar').disabled = !rodando;
+    $('#btn-exportar').disabled = rodando || !tem;
+    $('#btn-exportar-defesas').disabled = rodando || !auditou;
+    // Só um elemento chama atenção por vez: o próximo passo do fluxo
+    $('#btn-carregar').classList.toggle('nudge', !algumaFonte && !rodando);
+    $('#btn-enviar').classList.toggle('nudge', parcial && !rodando);
+    $('#btn-executar').classList.toggle('nudge', tem && !auditou && !rodando);
+    $('#btn-executar').innerHTML = rodando
+      ? `${icon('loader-2', 'h-4 w-4 animate-spin')}Agente executando…`
+      : `${icon('sparkles', 'h-4 w-4')}${auditou ? 'Executar o agente novamente' : 'Executar Agente de Auditoria IA'}`;
+    const nota = $('#nota-executar');
+    nota.textContent = parcial
+      ? (entradas.fatura ? 'Falta o relatório do Power BI para cruzar com a fatura.' : 'Falta a fatura da transportadora para cruzar com o Power BI.')
+      : 'Tolerância: R$ 1,00 ou 0,5% (o maior) · recálculo pela regra de cada contrato';
+    nota.classList.toggle('text-warn', parcial);
+    nota.classList.toggle('text-mute', !parcial);
+    $('#dot-fatura').className = `h-1.5 w-1.5 rounded-full ${entradas.fatura ? 'bg-ok' : 'bg-zinc-600'}`;
+    $('#dot-bi').className = `h-1.5 w-1.5 rounded-full ${entradas.bi ? 'bg-ok' : 'bg-zinc-600'}`;
+    $('#dot-agente').className = `h-1.5 w-1.5 rounded-full ${rodando ? 'animate-pulse bg-[#9AA2F0]' : auditou ? 'bg-ok' : 'bg-zinc-600'}`;
+    $('#pill-agente-txt').textContent = rodando ? 'Agente executando' : auditou ? 'Agente concluído' : 'Agente parado';
+    refreshIcons();
+  },
+
+  statusAgente(texto, classes) { const el = $('#agent-status'); el.textContent = texto; el.className = `badge ${classes}`; },
+
+  progresso(feitas, total, inicio, glosa) {
+    $('#agent-progress-bar').style.width = total ? ((feitas / total) * 100).toFixed(1) + '%' : '0%';
+    $('#agent-progress-label').textContent = `${feitas} de ${pl(total, 'CT-e', 'CT-es')}`;
+    $('#agent-progress-meta').textContent = inicio ? `${Fmt.duracao(performance.now() - inicio)} · ${Fmt.moeda(glosa)} a glosar` : '—';
+  },
+};
+
+function resumoModalidades(linhas) {
+  const cont = {};
+  for (const l of linhas) cont[l.modalidade] = (cont[l.modalidade] || 0) + 1;
+  return ORDEM_MODALIDADES.filter((m) => cont[m]).map((m) => `${MODALIDADES[m].curto} ${cont[m]}`).join(' · ');
+}
+
+const textoCruzamento = (c) => `${c.cruzados} de ${c.ctes} cruzados${c.semBi ? ` · ${c.semBi} sem NF no BI` : ''}${c.semCobranca ? ` · ${c.semCobranca} sem cobrança` : ''}`;
+
+// Base completa: fatura e Power BI cruzados, prontos para o agente
+function definirBase(registros, cruzamento) {
+  state.registros = registros;
+  state.linhas = registros.map(comoAguardando);
+  state.cruzamento = cruzamento;
+  state.ultimaExecucao = null;
+  state.pagina = 1;
+  state.filtros = { busca: '', status: 'Todos', transp: 'Todas', modalidade: 'Todas' };
+  state.ordenacao = { chave: null, direcao: 1 };
+  $('#input-busca').value = '';
+  Pipeline.reset();
+  Pipeline.set('cruzamento', cruzamento.semBi ? 'aviso' : 'ok', textoCruzamento(cruzamento));
+  Pipeline.set('modalidades', 'ok', resumoModalidades(state.linhas));
+  UI.statusAgente('Pronto', 'bg-white/[0.04] text-ink/90 ring-line');
+  UI.progresso(0, registros.length, null, 0);
+  Terminal.ocioso(`${pl(registros.length, 'CT-e cruzado', 'CT-es cruzados')} com o Power BI e classificados por regra. Clique em "Executar Agente de Auditoria IA".`);
+  UI.renderTudo();
+}
+
+// Junta o que estiver carregado. Sem fatura e Power BI, a auditoria fica esperando.
+function montarBase() {
+  if (entradas.fatura && entradas.bi) {
+    const { registros, stats } = Cruzamento.montar(entradas.fatura.registros, entradas.bi.registros, cotacoesCarregadas());
+    definirBase(registros, stats);
+    return true;
+  }
+  state.registros = []; state.linhas = []; state.cruzamento = null; state.ultimaExecucao = null;
+  Pipeline.reset();
+  UI.statusAgente('Parado', 'bg-white/[0.04] text-mute ring-line');
+  UI.progresso(0, 0, null, 0);
+  Terminal.ocioso(entradas.fatura ? 'Fatura carregada. Envie o relatório do Power BI para cruzar.' : entradas.bi ? 'Power BI carregado. Envie a fatura da transportadora para cruzar.' : 'Carregue a fatura e o relatório do Power BI para começar.');
+  UI.renderTudo();
+  return false;
+}
+
+/* ---------- 26. Agente: executa o motor e narra o raciocínio em tempo real ---------- */
+const Agent = {
+  rodando: false,
+  cancelar: false,
+  velocidade: () => Number($('#sel-velocidade').value),
+  async pausa(ms) { const v = this.velocidade(); if (v > 0) await sleep(ms / v); },
+  async log(tipo, texto, atraso = CONFIG.ATRASO_LINHA_MS) { Terminal.escrever(tipo, texto); await this.pausa(atraso); },
+  parar() { if (this.rodando) this.cancelar = true; },
+
+  async executar() {
+    if (this.rodando) return;
+    if (!state.registros.length) { Toast.mostrar('aviso', 'Base incompleta', 'Carregue a fatura e o relatório do Power BI antes de executar o agente.'); return; }
+    this.rodando = true;
+    this.cancelar = false;
+    const inicio = performance.now();
+    const total = state.registros.length;
+    const c = state.cruzamento;
+    state.linhas = state.registros.map(comoAguardando);
+    state.ultimaExecucao = null;
+    state.pagina = 1;
+    Resumo.atual = null;
+    UI.renderTudo();
+    UI.statusAgente('Executando', 'bg-accent/15 text-[#B4BAF5] ring-accent/40');
+    Terminal.limpar();
+    ['regras', 'agente', 'relatorio'].forEach((e) => Pipeline.set(e, 'parado'));
+
+    try {
+      const arq = (fonte, padrao) => (fonte && fonte.origem === 'csv' ? `"${fonte.nome}"` : padrao);
+      const cot = entradas.cotacoes ? ` --cotacoes ${arq(entradas.cotacoes, 'cotacoes_whatsapp.csv')}` : '';
+      await this.log('cmd', `python auditor_ia.py --fatura ${arq(entradas.fatura, 'fatura_transportadoras.csv')} --power-bi ${arq(entradas.bi, 'relatorio_power_bi.csv')}${cot} --provedor claude`, 120);
+      await this.log('sistema', 'Agente Auditor de Fretes · temperatura 0 · saída validada pelo JSON Schema parecer_auditoria_v3', 60);
+      await this.log('sistema', 'System prompt: system_prompt_agente.md (papel, 3 fontes, 4 regras comerciais, raciocínio, exemplos e schema)', 60);
+      await this.log('ferramenta', `fatura.ler() → ${pl(c.ctes, 'CT-e', 'CT-es')} de ${pl(c.transportadoras, 'transportadora', 'transportadoras')} · ${Fmt.moeda(c.cobrado)} cobrados`, 100);
+      await this.log('ferramenta', `powerbi.ler() → ${pl(c.notasBi, 'nota', 'notas')} · ${Fmt.moeda(c.previsto)} em frete previsto`, 100);
+      if (c.cotacoes) await this.log('ferramenta', `cotacoes.ler() → ${pl(c.cotacoes, 'cotação spot registrada', 'cotações spot registradas')} (WhatsApp)`, 100);
+      await this.log('ferramenta', `cruzamento.por_nf(fatura, power_bi) → ${c.cruzados} cruzados · ${c.semBi} sem NF no BI · ${c.semCobranca} notas do BI sem cobrança`, 100);
+      await this.log('ferramenta', `contratos.classificar() → ${resumoModalidades(state.linhas)}`, 100);
+      await this.log('regra', `Tolerância de ${Fmt.moeda(CONFIG.TOLERANCIA_ABS)} ou ${Fmt.pct(CONFIG.TOLERANCIA_PCT)} · cubagem 300 kg/m³ (rodoviário) e 167 kg/m³ (aéreo) · ICMS 7%/12% (rodoviário) e 4% (aéreo) · revisão humana a partir de ${Fmt.moeda(CONFIG.ALCADA_REVISAO_HUMANA)}`, 80);
+
+      Pipeline.set('regras', 'rodando');
+      const resultados = AuditEngine.auditarBase(state.registros);   // os números vêm das regras, não do LLM
+      await this.pausa(250);
+      Pipeline.set('regras', 'ok', `${pl(resultados.reduce((s, r) => s + r.achados.length, 0), 'achado', 'achados')} em ${pl(total, 'CT-e', 'CT-es')}`);
+      Pipeline.set('agente', 'rodando');
+      await this.log('sistema', 'Recálculo concluído. Iniciando o raciocínio CT-e por CT-e.', 120);
+
+      let feitas = 0, glosa = 0;
+      for (let i = 0; i < resultados.length && !this.cancelar; i++) {
+        const res = resultados[i];
+        Resumo.atual = res;
+        Resumo.atualizarTopo();
+        for (const [tipo, texto] of Narrator.linhas(res, i + 1, total)) {
+          if (this.cancelar) break;
+          await this.log(tipo, texto);
+        }
+        if (this.cancelar) break;
+        state.linhas[i] = res;   // o CT-e só é confirmado quando o raciocínio dele termina
+        feitas++;
+        glosa += res.glosa;
+        Table.atualizarLinha(res);
+        Resumo.registrar(res);
+        KPIs.render();
+        UI.progresso(feitas, total, inicio, glosa);
+        if (feitas % 8 === 0) { Charts.render(); Table.renderChips(); ModalidadesUI.render(); }
+        if (this.velocidade() === 0 && feitas % 6 === 0) await sleep(0);   // deixa o navegador desenhar
+        await this.pausa(CONFIG.ATRASO_NOTA_MS);
+      }
+
+      const duracaoMs = performance.now() - inicio;
+      state.ultimaExecucao = { em: new Date(), duracaoMs, processadas: feitas, total, cancelada: this.cancelar };
+      const auditadas = state.linhas.filter((l) => l.status !== STATUS.AGUARDANDO);
+      const n = (s) => auditadas.filter((l) => l.status === s).length;
+      const k = KPIs.calcular(state.linhas);
+
+      if (this.cancelar) {
+        await this.log('aviso', `Execução interrompida em ${feitas} de ${pl(total, 'CT-e', 'CT-es')}. Os restantes continuam aguardando.`, 0);
+        Pipeline.set('agente', 'aviso', `Interrompido em ${feitas} de ${total}`);
+        UI.statusAgente('Interrompido', 'bg-warn/10 text-warn ring-warn/25');
+        Toast.mostrar('aviso', 'Execução interrompida', `${pl(feitas, 'CT-e auditado', 'CT-es auditados')}. Execute de novo para auditar todos.`);
+      } else {
+        await this.log('resumo', `${pl(total, 'CT-e auditado', 'CT-es auditados')} em ${Fmt.duracao(duracaoMs)}`, 60);
+        await this.log('resumo', `${n(STATUS.APROVADO)} aprovados · ${n(STATUS.CRITICA)} com divergência crítica · ${n(STATUS.ANALISE)} em análise`, 60);
+        await this.log('resumo', `Divergência fatura × Power BI de ${Fmt.moeda(k.valorDivergente)}; glosa comprovada pela regra de ${Fmt.moeda(k.economia)} (${Fmt.pct(k.pctEconomia)} do faturado)`, 60);
+        await this.log('resumo', `${pl(auditadas.filter((l) => l.requerRevisaoHumana).length, 'CT-e pede', 'CT-es pedem')} revisão humana · ${pl(n(STATUS.CRITICA) + n(STATUS.ANALISE), 'defesa técnica pronta', 'defesas técnicas prontas')} para o Financeiro`, 60);
+        await this.log('sucesso', 'Relatório pronto. Exporte a planilha padronizada ou as defesas técnicas.', 0);
+        Pipeline.set('agente', 'ok', `${pl(feitas, 'parecer emitido', 'pareceres emitidos')}`);
+        Pipeline.set('relatorio', 'ok', `${Fmt.moeda(k.economia)} em glosas`);
+        UI.statusAgente('Concluído', 'bg-ok/10 text-ok ring-ok/25');
+        Toast.mostrar('sucesso', 'Auditoria concluída', `${pl(n(STATUS.CRITICA), 'divergência crítica', 'divergências críticas')} e ${Fmt.moeda(k.economia)} a glosar.`);
+      }
+    } catch (erro) {
+      console.error(erro);
+      Terminal.escrever('erro', erro.message || String(erro));
+      Pipeline.set('agente', 'aviso', 'Falhou: veja o console do navegador');
+      UI.statusAgente('Erro', 'bg-bad/10 text-[#F07A7A] ring-bad/30');
+      Toast.mostrar('erro', 'O agente parou com erro', erro.message || String(erro));
+    } finally {
+      this.rodando = false;
+      Resumo.atual = null;
+      UI.renderTudo();
+    }
+  },
+};
+
+/* ---------- 27. Ações do usuário ---------- */
+let carregandoSimulacao = false;
+async function carregarSimulacao() {
+  if (Agent.rodando || carregandoSimulacao) return;
+  carregandoSimulacao = true;
+  try {
+    const { fatura, bi, cotacoes } = DataGenerator.gerar();
+    entradas.fatura = entradas.bi = entradas.cotacoes = null;
+    entradas.simulacao = true;
+    montarBase();
+    // Mostra as três fontes chegando, uma de cada vez
+    for (const [chave, valor] of [
+      ['fatura', { nome: 'simulação', registros: fatura, cotacoes: [], origem: 'simulacao' }],
+      ['bi', { nome: 'simulação', registros: bi, cotacoes: [], origem: 'simulacao' }],
+      ['cotacoes', { nome: 'simulação', registros: cotacoes, origem: 'simulacao' }],
+    ]) {
+      FontesUI.carregando = chave;
+      FontesUI.render();
+      await sleep(chave === 'cotacoes' ? 0 : 220);
+      entradas[chave] = valor;
+    }
+    FontesUI.carregando = null;
+    montarBase();
+    const c = state.cruzamento;
+    Toast.mostrar('sucesso', 'Base simulada carregada', `${pl(c.ctes, 'CT-e', 'CT-es')} da fatura cruzados com ${pl(c.notasBi, 'nota', 'notas')} do Power BI, em ${Contratos.qtdRegras()} regras comerciais.`);
+  } finally {
+    carregandoSimulacao = false;
+  }
+}
+
+function resumoArquivo(res) {
+  if (res.papel === 'fatura') return `${pl(res.fatura.length, 'CT-e', 'CT-es')} · ${Fmt.moeda(somar(res.fatura, 'valorCte'))} cobrados`;
+  if (res.papel === 'bi') return `${pl(res.bi.length, 'nota', 'notas')} · ${Fmt.moeda(somar(res.bi, 'valorPrevistoBi'))} em frete previsto`;
+  if (res.papel === 'cotacoes') return pl(res.cotacoes.length, 'cotação registrada', 'cotações registradas');
+  return `${pl(res.fatura.length, 'CT-e', 'CT-es')} com dados da fatura e do Power BI`;
+}
+
+// Cada arquivo vai para a fonte certa, reconhecida pelas colunas
+function aplicarArquivo(nome, res) {
+  if (res.papel === 'combinado') {
+    entradas.fatura = { nome, registros: res.fatura, cotacoes: [], origem: 'csv' };
+    entradas.bi = { nome, registros: res.bi, cotacoes: res.cotacoes, origem: 'csv', combinado: true };
+  } else if (res.papel === 'fatura') entradas.fatura = { nome, registros: res.fatura, cotacoes: res.cotacoes, origem: 'csv' };
+  else if (res.papel === 'bi') entradas.bi = { nome, registros: res.bi, cotacoes: res.cotacoes, origem: 'csv' };
+  else entradas.cotacoes = { nome, registros: res.cotacoes, origem: 'csv' };
+}
+
+async function processarArquivos(lista) {
+  const arquivos = [...(lista || [])];
+  if (!arquivos.length || Agent.rodando) return;
+  if (entradas.simulacao) { entradas.fatura = entradas.bi = entradas.cotacoes = null; entradas.simulacao = false; }   // não mistura simulação com dados reais
+  let carregados = 0;
+  for (const file of arquivos) {
+    if (!/\.csv$/i.test(file.name)) { Toast.mostrar('erro', `${file.name}: formato não suportado`, 'Envie arquivos .csv. No Excel: Salvar como → CSV.'); continue; }
+    if (file.size > CONFIG.MAX_ARQUIVO_MB * 1024 * 1024) { Toast.mostrar('erro', `${file.name}: arquivo grande demais`, `O limite é ${CONFIG.MAX_ARQUIVO_MB} MB.`); continue; }
+    try {
+      const texto = await CsvService.lerArquivo(file);
+      const res = CsvService.mapear(CsvService.parse(texto).linhas);
+      aplicarArquivo(file.name, res);
+      carregados++;
+      Toast.mostrar('sucesso', CsvService.PAPEIS[res.papel].titulo, `${file.name}: ${resumoArquivo(res)}`);
+      res.avisos.forEach((a) => Toast.mostrar('aviso', file.name, a));
+    } catch (erro) {
+      Toast.mostrar('erro', `Não foi possível ler ${file.name}`, erro.message);
+    }
+  }
+  $('#input-csv').value = '';   // permite reenviar o mesmo arquivo
+  if (!carregados) return;
+  if (!montarBase()) {
+    Toast.mostrar('info', 'Falta uma planilha para cruzar', entradas.fatura ? 'Envie o relatório do Power BI.' : 'Envie a fatura da transportadora.');
+    return;
+  }
+  const c = state.cruzamento;
+  if (c.semBi) Toast.mostrar('aviso', 'CT-es sem nota no Power BI', `${pl(c.semBi, 'CT-e cobra NF', 'CT-es cobram NFs')} fora do relatório. Eles ficam em análise.`);
+  if (c.biRepetidas && !entradas.bi.combinado) Toast.mostrar('aviso', 'NFs repetidas no Power BI', `${pl(c.biRepetidas, 'linha repetida', 'linhas repetidas')}: valeu a primeira ocorrência de cada NF.`);
+  const semRegra = state.linhas.filter((l) => l.modalidade === 'REFERENCIA_BI').length;
+  if (semRegra) Toast.mostrar('info', 'Transportadoras sem regra cadastrada', `${pl(semRegra, 'CT-e será comparado', 'CT-es serão comparados')} com o frete previsto no Power BI.`);
+}
+
+const carimbo = () => { const d = new Date(); return d.toISOString().slice(0, 10) + '_' + d.toTimeString().slice(0, 5).replace(':', ''); };
+
+function exportar() {
+  const linhas = Table.filtradas();   // exporta exatamente o que está filtrado na tela
+  if (!linhas.length) { Toast.mostrar('aviso', 'Nada para exportar', 'Os filtros atuais não retornam nenhum CT-e.'); return; }
+  CsvService.baixar(`auditoria_fretes_padronizada_${carimbo()}.csv`, CsvService.montarExportacao(linhas));
+  const pendentes = linhas.filter((l) => l.status === STATUS.AGUARDANDO).length;
+  Toast.mostrar('sucesso', 'Planilha exportada', `${pl(linhas.length, 'CT-e', 'CT-es')}${pendentes ? `, ${pendentes} ainda aguardando o agente` : ''}.`);
+}
+
+// Um .txt com as defesas dos CT-es filtrados: glosas primeiro, depois bloqueios
+function exportarDefesas() {
+  const auditadas = Table.filtradas().filter((l) => l.status !== STATUS.AGUARDANDO);
+  if (!auditadas.length) { Toast.mostrar('aviso', 'Nada para exportar', 'Execute o agente e confira os filtros da tabela.'); return; }
+  const comAchados = auditadas.filter((l) => l.status !== STATUS.APROVADO);
+  const ordem = [STATUS.CRITICA, STATUS.ANALISE, STATUS.APROVADO];
+  const lista = (comAchados.length ? comAchados : auditadas).sort((a, b) => ordem.indexOf(a.status) - ordem.indexOf(b.status) || b.glosa - a.glosa);
+  const glosa = lista.reduce((s, l) => s + l.glosa, 0);
+  const cabecalho = ['FreteAudit · Defesas técnicas para o Financeiro', `Gerado em ${new Date().toLocaleString('pt-BR')} · ${pl(lista.length, 'documento', 'documentos')} · glosa total ${Fmt.moeda(glosa)}`, ''].join('\n');
+  const separador = '\n\n' + '─'.repeat(72) + '\n\n';
+  CsvService.baixar(`defesas_tecnicas_${carimbo()}.txt`, cabecalho + separador + lista.map((l) => Defesa.texto(l)).join(separador), 'text/plain');
+  Toast.mostrar('sucesso', 'Defesas exportadas', `${pl(lista.length, 'documento', 'documentos')}${comAchados.length && comAchados.length < auditadas.length ? '; CT-es aprovados ficaram de fora' : ''}.`);
+}
+
+function limparBase() {
+  entradas.fatura = entradas.bi = entradas.cotacoes = null;
+  entradas.simulacao = false;
+  state.filtros.modalidade = 'Todas';
+  montarBase();
+}
+
+function filtrarModalidade(cod) {
+  state.filtros.modalidade = state.filtros.modalidade === cod ? 'Todas' : cod;
+  state.pagina = 1;
+  Table.renderSelects();
+  Table.render();
+  ModalidadesUI.render();
+}
+
+/* ---------- 28. Inicialização: liga cada botão à sua função ---------- */
+function init() {
+  $('#link-repo').href = CONFIG.REPO_URL;
+  Terminal.init();
+  Terminal.ocioso('Carregue a fatura e o relatório do Power BI para começar.');
+  Pipeline.reset();
+  Charts.init();
+  state.porPagina = Number($('#sel-page-size').value);
+  let modelos = null;
+
+  $('#btn-carregar').addEventListener('click', carregarSimulacao);
+  $('#btn-limpar').addEventListener('click', limparBase);
+  $('#btn-executar').addEventListener('click', () => Agent.executar());
+  $('#btn-parar').addEventListener('click', () => Agent.parar());
+  $('#btn-exportar').addEventListener('click', exportar);
+  $('#btn-exportar-defesas').addEventListener('click', exportarDefesas);
+  $('#btn-enviar').addEventListener('click', () => $('#input-csv').click());
+  document.querySelectorAll('[data-modelo]').forEach((b) => b.addEventListener('click', () => {
+    modelos = modelos || CsvService.modelos();
+    const nomes = { fatura: 'modelo_fatura_transportadora.csv', bi: 'modelo_relatorio_power_bi.csv', cotacoes: 'modelo_cotacoes_whatsapp.csv' };
+    CsvService.baixar(nomes[b.dataset.modelo], modelos[b.dataset.modelo]);
+  }));
+  $('#btn-copiar-log').addEventListener('click', () => (Terminal.buffer.length ? copiarTexto(Terminal.buffer.join('\n'), 'Log') : Toast.mostrar('info', 'O log está vazio')));
+  $('#btn-limpar-log').addEventListener('click', () => { if (!Agent.rodando) Terminal.ocioso('Log limpo.'); });
+
+  // Upload: botão ou arrastar-e-soltar em qualquer ponto do card 1 (vários arquivos de uma vez)
+  const card = $('#card-dados'), caixa = $('#fontes');
+  $('#input-csv').addEventListener('change', (e) => processarArquivos(e.target.files));
+  ['dragenter', 'dragover'].forEach((ev) => card.addEventListener(ev, (e) => { e.preventDefault(); caixa.classList.add('border-accent/60', 'bg-accent/[0.06]'); }));
+  ['dragleave', 'drop'].forEach((ev) => card.addEventListener(ev, (e) => {
+    if (ev === 'dragleave' && card.contains(e.relatedTarget)) return;
+    e.preventDefault();
+    caixa.classList.remove('border-accent/60', 'bg-accent/[0.06]');
+  }));
+  card.addEventListener('drop', (e) => { if (!Agent.rodando) processarArquivos(e.dataTransfer.files); });
+
+  // Abas do card 2 (clique e setas do teclado)
+  $('#tab-resumo').addEventListener('click', () => Abas.ativar('resumo'));
+  $('#tab-log').addEventListener('click', () => Abas.ativar('log'));
+  $('#tablist-agente').addEventListener('keydown', (e) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+    e.preventDefault();
+    Abas.ativar(e.key === 'Home' ? 'resumo' : e.key === 'End' ? 'log' : Abas.atual === 'resumo' ? 'log' : 'resumo', true);
+  });
+  $('#painel-resumo').addEventListener('click', (e) => { const b = e.target.closest('[data-abrir]'); if (b) Drawer.abrir(b.dataset.abrir); });
+
+  // Filtros, busca, ordenação e paginação
+  $('#input-busca').addEventListener('input', (e) => { state.filtros.busca = e.target.value; state.pagina = 1; Table.render(); });
+  $('#status-chips').addEventListener('click', (e) => { const b = e.target.closest('[data-status]'); if (b) { state.filtros.status = b.dataset.status; state.pagina = 1; Table.render(); } });
+  $('#sel-modalidade').addEventListener('change', (e) => filtrarModalidade(e.target.value === 'Todas' ? state.filtros.modalidade : e.target.value));
+  $('#modalidades-grid').addEventListener('click', (e) => { const b = e.target.closest('[data-modalidade]'); if (b) filtrarModalidade(b.dataset.modalidade); });
+  $('#btn-todas-modalidades').addEventListener('click', () => filtrarModalidade(state.filtros.modalidade));
+  $('#sel-transp').addEventListener('change', (e) => { state.filtros.transp = e.target.value; state.pagina = 1; Table.render(); });
+  $('#thead-row').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-sort]');
+    if (!b) return;
+    const o = state.ordenacao;
+    if (o.chave === b.dataset.sort) o.direcao *= -1;
+    else { o.chave = b.dataset.sort; o.direcao = ['transportadora', 'nf', 'modalidade'].includes(b.dataset.sort) ? 1 : -1; }
+    Table.render();
+  });
+  $('#sel-page-size').addEventListener('change', (e) => { state.porPagina = Number(e.target.value); state.pagina = 1; Table.render(); });
+  $('#btn-prev').addEventListener('click', () => { state.pagina--; Table.render(); });
+  $('#btn-next').addEventListener('click', () => { state.pagina++; Table.render(); });
+
+  // Painel lateral
+  $('#tabela-body').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr) Drawer.abrir(tr.dataset.id); });
+  $('#tabela-body').addEventListener('keydown', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr && e.key === 'Enter') Drawer.abrir(tr.dataset.id); });
+  $('#btn-fechar-drawer').addEventListener('click', () => Drawer.fechar());
+  $('#drawer-backdrop').addEventListener('click', () => Drawer.fechar());
+  $('#drawer-body').addEventListener('click', (e) => {
+    if (e.target.closest('[data-copiar-json]')) copiarTexto(Drawer.jsonAtual, 'JSON do parecer');
+    if (e.target.closest('[data-copiar-defesa]')) copiarTexto(Drawer.defesaAtual, 'Defesa técnica');
+    if (e.target.closest('[data-baixar-defesa]')) CsvService.baixar(`defesa_NF${Drawer.atual.nf}.txt`, Drawer.defesaAtual, 'text/plain');
+  });
+
+  // Atalhos: "/" foca a busca, Esc fecha o painel
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') Drawer.fechar();
+    const digitando = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
+    if (e.key === '/' && !digitando && !Drawer.aberto) { e.preventDefault(); $('#input-busca').focus(); }
+  });
+
+  UI.renderTudo();
+  refreshIcons();
+}
+
+if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
