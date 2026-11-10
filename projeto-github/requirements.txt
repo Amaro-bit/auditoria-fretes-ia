@@ -1,2 +1,0 @@
-# Única dependência externa do auditor_ia.py (testado com Python 3.12 e pandas 3.0)
-pandas>=2.1
